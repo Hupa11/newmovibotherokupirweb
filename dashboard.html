@@ -938,9 +938,9 @@
 
         // Delete app
         async function deleteApp(appName, collectionName) {
-            if (!confirm(`🚨 WARNING: Are you sure you want to delete ${appName}?\nThis will destroy the Heroku app AND remove its bot sessions from MongoDB!`)) return;
+            if (!confirm(`🚨 WARNING: Are you sure you want to delete ${appName}?\nThis will destroy the Heroku app but KEEP its bot sessions in MongoDB so they can be redeployed later!`)) return;
             
-            log(`De-provisioning Heroku App ${appName} and clearing collection ${collectionName}...`, 'err');
+            log(`De-provisioning Heroku App ${appName} (MongoDB collection ${collectionName} is preserved)...`, 'warn');
             
             try {
                 const res = await fetchApi('/api/apps/delete', {
