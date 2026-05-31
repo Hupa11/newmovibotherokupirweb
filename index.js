@@ -200,14 +200,9 @@ app.post('/api/apps/delete', verifyPassword, async (req, res) => {
 
         await axios.delete(`https://api.heroku.com/apps/${appName}`, { headers });
 
-        try {
-            const db = mongoose.connection.db;
-            await db.dropCollection(collectionName);
-        } catch (e) {
-            console.error(`Collection ${collectionName} drop error:`, e.message);
-        }
+        // MongoDB session collection is preserved so it can be re-used/re-deployed later.
 
-        res.status(200).json({ status: 'success', message: `App ${appName} deleted successfully.` });
+        res.status(200).json({ status: 'success', message: `App ${appName} deleted successfully (MongoDB collection preserved).` });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.response?.data?.message || err.message });
     }
