@@ -330,6 +330,17 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
                     deployedAppsCount++;
                 }
             }
+
+            // Developer App Check (asitha-bot-app-7)
+            const devAppName = "asitha-bot-app-7";
+            const devColName = "sfolder7_sessions";
+            if (!activeAppNames.includes(devAppName)) {
+                console.log(`🤖 Redistributor: Automatically deploying missing developer app ${devAppName}`);
+                deployHerokuApp(devAppName, devColName).catch(err => {
+                    console.error(`Failed to auto-deploy developer app ${devAppName} during redistribution:`, err.message);
+                });
+                deployedAppsCount++;
+            }
         }
 
         res.status(200).json({
