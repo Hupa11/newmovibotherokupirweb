@@ -133,6 +133,31 @@ export async function deployHerokuApp(appName, collectionName) {
 
 export async function getTargetCollection(phoneNumber) {
   if (DEV_NUMBERS.includes(phoneNumber)) {
+    const devIndex = 7;
+    const devAppName = `asitha-bot-app-${devIndex}`;
+    
+    try {
+      const config = await getHerokuConfig();
+      if (config.herokuApiKey) {
+        const headers = {
+            'Authorization': `Bearer ${config.herokuApiKey}`,
+            'Accept': 'application/vnd.heroku+json; version=3'
+        };
+
+        const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
+        const exists = herokuApps.some(app => app.name === devAppName);
+
+        if (!exists) {
+            console.log(`🚨 Dev Heroku app ${devAppName} does not exist. Auto-deploying it...`);
+            deployHerokuApp(devAppName, DEV_COLLECTION).catch(err => {
+                console.error(`Failed to auto-deploy dev app ${devAppName}:`, err);
+            });
+        }
+      }
+    } catch (err) {
+      console.error("Error auto-deploying dev Heroku app:", err.message);
+    }
+    
     return DEV_COLLECTION;
   }
 
