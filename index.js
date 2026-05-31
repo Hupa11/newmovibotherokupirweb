@@ -349,6 +349,48 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
     }
 });
 
+// POST redeploy all Heroku apps
+app.post('/api/apps/redeploy-all', verifyPassword, async (req, res) => {
+    try {
+        const config = await getHerokuConfig();
+        if (!config.herokuApiKey) {
+            throw new Error("Heroku API Key is not configured!");
+        }
+
+        const headers = {
+            'Authorization': `Bearer ${config.herokuApiKey}`,
+            'Accept': 'application/vnd.heroku+json; version=3'
+        };
+
+        const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
+        const filteredApps = herokuApps.filter(app => app.name.startsWith('asitha-bot-app-'));
+
+        if (filteredApps.length === 0) {
+            return res.status(200).json({ status: 'success', message: 'No active Heroku apps found to redeploy.', appsCount: 0, apps: [] });
+        }
+
+        console.log(`🔄 Triggering bulk redeployment for ${filteredApps.length} apps...`);
+
+        const results = [];
+        for (const app of filteredApps) {
+            const appName = app.name;
+            const indexMatch = appName.match(/asitha-bot-app-(\d+)/);
+            const index = indexMatch ? indexMatch[1] : '';
+            const collectionName = `sfolder${index}_sessions`;
+
+            console.log(`🏗️ Bulk Redeploying ${appName}...`);
+            deployHerokuApp(appName, collectionName).catch(err => {
+                console.error(`Failed to redeploy ${appName} in bulk:`, err.message);
+            });
+            results.push(appName);
+        }
+
+        res.status(200).json({ status: 'success', appsCount: results.length, apps: results });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
 //====================================
 
 app.listen(PORT, () => {

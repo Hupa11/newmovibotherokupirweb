@@ -633,6 +633,9 @@
                         <button class="btn btn-warning" style="width: auto; padding: 0.5rem 1.25rem;" onclick="redistributeSessions()">
                             <i class="fa-solid fa-shuffle"></i> Redistribute & Balance
                         </button>
+                        <button class="btn btn-primary" style="width: auto; padding: 0.5rem 1.25rem; background: #3b82f6; border-color: #2563eb;" onclick="redeployAllApps()">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Update All Bots
+                        </button>
                         <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.25rem;" onclick="createNewApp()">
                             <i class="fa-solid fa-plus-circle"></i> Deploy New App
                         </button>
@@ -982,6 +985,29 @@
                 }
             } catch (err) {
                 log(`Connection error during redistribution: ${err.message}`, 'err');
+            }
+        }
+
+        // Redeploy all apps (Update All Bots)
+        async function redeployAllApps() {
+            if (!confirm('🔄 Are you sure you want to pull the latest code from GitHub and redeploy ALL running Heroku bot apps?\nThis will update every single bot to the newest version.')) return;
+            
+            log('Triggering bulk update for all running Heroku apps...', 'warn');
+            
+            try {
+                const res = await fetchApi('/api/apps/redeploy-all', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    log(`Bulk update triggered successfully for ${data.appsCount} apps!`, 'success');
+                    log(`Apps being updated: ${data.apps.join(', ')}`);
+                    alert(`Success: Initiated updates for ${data.appsCount} Heroku applications.`);
+                } else {
+                    log(`Bulk update failed: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Connection error during bulk update: ${err.message}`, 'err');
             }
         }
 
