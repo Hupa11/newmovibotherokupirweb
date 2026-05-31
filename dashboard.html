@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asitha MD - Heroku Bot Orchestrator</title>
+    <!-- Modern Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%);
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.06);
+            --glass-hover: rgba(255, 255, 255, 0.07);
+            --primary: #8b5cf6;
+            --primary-glow: rgba(139, 92, 246, 0.4);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.4);
+            --error: #ef4444;
+            --error-glow: rgba(239, 68, 68, 0.4);
+            --warning: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --font-outfit: 'Outfit', sans-serif;
+            --font-inter: 'Inter', sans-serif;
+            --font-mono: 'Fira Code', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-inter);
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-attachment: fixed;
+        }
+
+        /* Abstract glowing spheres behind glass */
+        .glow-sphere {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            z-index: -1;
+            opacity: 0.4;
+        }
+
+        .sphere-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--primary);
+            top: -100px;
+            left: -100px;
+            animation: float 20s ease-in-out infinite alternate;
+        }
+
+        .sphere-2 {
+            width: 500px;
+            height: 500px;
+            background: #3b82f6;
+            bottom: -150px;
+            right: -100px;
+            animation: float 25s ease-in-out infinite alternate-reverse;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0) scale(1); }
+            100% { transform: translateY(50px) scale(1.1); }
+        }
+
+        .app-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem;
+        }
+
+        /* Header design */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            padding: 1.5rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .logo-section h1 {
+            font-family: var(--font-outfit);
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #a78bfa, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-section p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .system-status {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .status-pill.loading {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+        }
+
+        .status-pill .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        /* Stats Section */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 1.75rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 12px 40px 0 rgba(139, 92, 246, 0.15);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary);
+        }
+
+        .stat-card.success::before { background: var(--success); }
+        .stat-card.warning::before { background: var(--warning); }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-family: var(--font-outfit);
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-top: 0.75rem;
+            color: var(--text-main);
+        }
+
+        .stat-icon {
+            font-size: 1.5rem;
+            opacity: 0.7;
+        }
+
+        /* Main Workspace Split */
+        .main-split {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        @media (max-width: 1024px) {
+            .main-split {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Forms / Glass Panels */
+        .glass-panel {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 2rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+            margin-bottom: 2rem;
+        }
+
+        .panel-title {
+            font-family: var(--font-outfit);
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 0.75rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+            position: relative;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .form-control {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: var(--text-main);
+            font-family: var(--font-inter);
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .form-control[type="password"] {
+            padding-right: 2.5rem;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 0.85rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: color 0.2s;
+        }
+
+        .toggle-password:hover {
+            color: var(--text-main);
+        }
+
+        /* Buttons styling */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: none;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, #6d28d9 100%);
+            color: white;
+            box-shadow: 0 4px 15px 0 var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(139, 92, 246, 0.6);
+        }
+
+        .btn-secondary {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+        }
+
+        .btn-secondary:hover {
+            background: var(--glass-hover);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--error) 0%, #b91c1c 100%);
+            color: white;
+            box-shadow: 0 4px 15px 0 var(--error-glow);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(239, 68, 68, 0.6);
+        }
+
+        /* Grid of Heroku Apps */
+        .apps-title-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .apps-title-section h2 {
+            font-family: var(--font-outfit);
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .app-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 1.5rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .app-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .app-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .app-name {
+            font-family: var(--font-outfit);
+            font-weight: 600;
+            font-size: 1.15rem;
+            letter-spacing: -0.2px;
+            color: var(--text-main);
+        }
+
+        .app-badge {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.25);
+            color: #c084fc;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.6rem;
+            border-radius: 50px;
+        }
+
+        .app-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            padding-bottom: 0.25rem;
+        }
+
+        .detail-row strong {
+            color: var(--text-main);
+        }
+
+        .app-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .app-actions .btn {
+            padding: 0.5rem;
+            font-size: 0.8rem;
+            border-radius: 8px;
+        }
+
+        /* Console logger styling */
+        .console-panel {
+            background: #090d16;
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            margin-top: 2rem;
+            overflow: hidden;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+
+        .console-header {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 0.75rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .console-window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot-red, .dot-yellow, .dot-green {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+
+        .console-title {
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .console-logs {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            line-height: 1.5;
+            padding: 1.25rem;
+            height: 200px;
+            overflow-y: auto;
+            color: #38bdf8;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 8px;
+        }
+
+        .log-time {
+            color: #64748b;
+        }
+
+        .log-info { color: #38bdf8; }
+        .log-success { color: var(--success); }
+        .log-warn { color: var(--warning); }
+        .log-err { color: var(--error); }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+    </style>
+</head>
+<body>
+    <div class="glow-sphere sphere-1"></div>
+    <div class="glow-sphere sphere-2"></div>
+
+    <div class="app-container">
+        <!-- Top Navigation -->
+        <header>
+            <div class="logo-section">
+                <h1><i class="fa-solid fa-cloud-bolt"></i> HEROKU ORCHESTRATOR</h1>
+                <p>Asitha MD Multi-Device WhatsApp Bot Manager</p>
+            </div>
+            <div class="system-status">
+                <div id="statusPill" class="status-pill">
+                    <span class="dot"></span>
+                    <span id="statusText">System Active</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dynamic statistics -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <span>Deployed Heroku Dynos</span>
+                    <i class="fa-brands fa-heroku stat-icon" style="color: #6366f1;"></i>
+                </div>
+                <div id="statAppsCount" class="stat-value">0</div>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-header">
+                    <span>Total WhatsApp Bots Running</span>
+                    <i class="fa-brands fa-whatsapp stat-icon" style="color: #10b981;"></i>
+                </div>
+                <div id="statBotsCount" class="stat-value">0</div>
+            </div>
+            <div class="stat-card warning">
+                <div class="stat-header">
+                    <span>Scaling Limit per App</span>
+                    <i class="fa-solid fa-chart-line stat-icon" style="color: #f59e0b;"></i>
+                </div>
+                <div id="statLimit" class="stat-value">50</div>
+            </div>
+        </div>
+
+        <!-- Main Body -->
+        <div class="main-split">
+            <!-- Settings Panel -->
+            <div class="glass-panel">
+                <h3 class="panel-title"><i class="fa-solid fa-sliders"></i> Configuration</h3>
+                <form id="configForm">
+                    <div class="form-group">
+                        <label for="herokuApiKey">Heroku API Key</label>
+                        <div class="input-wrapper">
+                            <input type="password" id="herokuApiKey" name="herokuApiKey" class="form-control" placeholder="••••••••••••••••••••••••" required>
+                            <button type="button" class="toggle-password" onclick="togglePasswordVisibility('herokuApiKey')">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubToken">GitHub Token (Private Repos)</label>
+                        <div class="input-wrapper">
+                            <input type="password" id="githubToken" name="githubToken" class="form-control" placeholder="••••••••••••••••••••••••" required>
+                            <button type="button" class="toggle-password" onclick="togglePasswordVisibility('githubToken')">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubRepo">GitHub Repository Path</label>
+                        <input type="text" id="githubRepo" name="githubRepo" class="form-control" placeholder="nbbb15092/Pair" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubBranch">GitHub Branch</label>
+                        <input type="text" id="githubBranch" name="githubBranch" class="form-control" placeholder="main" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="botsPerAppLimit">Bots limit per Heroku App</label>
+                        <input type="number" id="botsPerAppLimit" name="botsPerAppLimit" class="form-control" min="5" max="230" placeholder="50" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">
+                        <i class="fa-solid fa-floppy-disk"></i> Save Configuration
+                    </button>
+                </form>
+            </div>
+
+            <!-- Deployment Overview & Apps Grid -->
+            <div>
+                <div class="apps-title-section">
+                    <h2><i class="fa-solid fa-server" style="color: var(--primary);"></i> Managed Heroku Applications</h2>
+                    <div style="display: flex; gap: 0.75rem;">
+                        <button class="btn btn-warning" style="width: auto; padding: 0.5rem 1.25rem;" onclick="redistributeSessions()">
+                            <i class="fa-solid fa-shuffle"></i> Redistribute & Balance
+                        </button>
+                        <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.25rem;" onclick="createNewApp()">
+                            <i class="fa-solid fa-plus-circle"></i> Deploy New App
+                        </button>
+                    </div>
+                </div>
+
+                <div id="appsGrid" class="apps-grid">
+                    <!-- Dynamic app cards injected here -->
+                    <div class="app-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;">
+                        <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem; color: var(--primary);"></i>
+                        <p>Querying Heroku applications and tracking collections...</p>
+                    </div>
+                </div>
+
+                <!-- Console Window -->
+                <div class="console-panel">
+                    <div class="console-header">
+                        <div class="console-window-dots">
+                            <span class="dot-red"></span>
+                            <span class="dot-yellow"></span>
+                            <span class="dot-green"></span>
+                        </div>
+                        <div class="console-title">Orchestration logs console</div>
+                        <i class="fa-solid fa-terminal" style="font-size: 0.8rem; color: #38bdf8;"></i>
+                    </div>
+                    <div id="consoleLogs" class="console-logs">
+                        <div class="log-entry">
+                            <span class="log-time">[00:00:00]</span>
+                            <span class="log-info">Console initialized. Ready to orchestrate.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let password = new URLSearchParams(window.location.search).get('password');
+        if (!password) {
+            password = prompt("Enter Orchestrator Password:");
+            if (password) {
+                const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?password=' + encodeURIComponent(password);
+                window.history.pushState({ path: newUrl }, '', newUrl);
+            } else {
+                document.body.innerHTML = `
+                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background: var(--bg-gradient); color: white; font-family: var(--font-outfit);">
+                        <i class="fa-solid fa-lock" style="font-size: 3rem; color: var(--error); margin-bottom: 1.5rem;"></i>
+                        <h2>Access Denied</h2>
+                        <p style="color: var(--text-muted); margin-top: 0.5rem;">Orchestrator password is required to access this dashboard.</p>
+                        <button class="btn btn-primary" style="width: auto; margin-top: 1.5rem; padding: 0.5rem 2rem;" onclick="location.reload()">Try Again</button>
+                    </div>
+                `;
+            }
+        }
+
+        async function fetchApi(url, options = {}) {
+            if (!options.headers) options.headers = {};
+            options.headers['x-password'] = password;
+            
+            const sep = url.includes('?') ? '&' : '?';
+            const reqUrl = `${url}${sep}password=${encodeURIComponent(password)}`;
+            
+            const res = await fetch(reqUrl, options);
+            if (res.status === 403) {
+                alert("Unauthorized! Invalid orchestrator password.");
+                window.location.href = window.location.pathname;
+                throw new Error("Unauthorized");
+            }
+            return res;
+        }
+
+        function togglePasswordVisibility(fieldId) {
+            const input = document.getElementById(fieldId);
+            const button = input.nextElementSibling.querySelector('i');
+            if (input.type === 'password') {
+                input.type = 'text';
+                button.className = 'fa-solid fa-eye-slash';
+            } else {
+                input.type = 'password';
+                button.className = 'fa-solid fa-eye';
+            }
+        }
+
+        function log(message, type = 'info') {
+            const consoleLogs = document.getElementById('consoleLogs');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            let typeClass = 'log-info';
+            if (type === 'success') typeClass = 'log-success';
+            if (type === 'warn') typeClass = 'log-warn';
+            if (type === 'err') typeClass = 'log-err';
+
+            entry.innerHTML = `
+                <span class="log-time">[${time}]</span>
+                <span class="${typeClass}">${message}</span>
+            `;
+            
+            consoleLogs.appendChild(entry);
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        }
+
+        // Fetch configs and load stats
+        async function fetchConfig() {
+            try {
+                const res = await fetchApi('/api/config');
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    const c = data.config;
+                    document.getElementById('herokuApiKey').value = c.herokuApiKey ? '••••••••••••••••••••••••' : '';
+                    document.getElementById('githubToken').value = c.githubToken ? '••••••••••••••••••••••••' : '';
+                    document.getElementById('githubRepo').value = c.githubRepo || 'nbbb15092/Pair';
+                    document.getElementById('githubBranch').value = c.githubBranch || 'main';
+                    document.getElementById('botsPerAppLimit').value = c.botsPerAppLimit || 50;
+                    document.getElementById('statLimit').innerText = c.botsPerAppLimit || 50;
+                    
+                    log('Successfully loaded configurations from MongoDB.');
+                }
+            } catch (err) {
+                log('Failed to fetch configurations from server.', 'err');
+            }
+        }
+
+        // Load active heroku apps list
+        async function fetchApps() {
+            if (!password) return;
+            const statusPill = document.getElementById('statusPill');
+            const statusText = document.getElementById('statusText');
+            
+            statusPill.className = 'status-pill loading';
+            statusText.innerText = 'Syncing...';
+            
+            try {
+                const res = await fetchApi('/api/apps');
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    const apps = data.apps;
+                    const grid = document.getElementById('appsGrid');
+                    grid.innerHTML = '';
+                    
+                    if (apps.length === 0) {
+                        grid.innerHTML = `
+                            <div class="app-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;">
+                                <i class="fa-solid fa-triangle-exclamation" style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--warning);"></i>
+                                <p>No deployed Heroku apps found prefixing "asitha-bot-app-".</p>
+                                <p style="font-size: 0.8rem; margin-top: 0.5rem;">Configure your API Key and GitHub Token then click "Deploy New App" to start.</p>
+                            </div>
+                        `;
+                    } else {
+                        let totalBots = 0;
+                        apps.forEach(app => {
+                            totalBots += app.botsCount;
+                            
+                            const card = document.createElement('div');
+                            card.className = 'app-card';
+                            
+                            const badgeColor = app.status === 'active' ? 'background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.25); color: #34d399;' : 'background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.25); color: #fbbf24;';
+                            
+                            card.innerHTML = `
+                                <div class="app-card-header">
+                                    <span class="app-name">${app.name}</span>
+                                    <span class="app-badge" style="${badgeColor}">${app.status || 'unknown'}</span>
+                                </div>
+                                <div class="app-details">
+                                    <div class="detail-row">
+                                        <span>Collection:</span>
+                                        <strong>${app.collectionName}</strong>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Active Bots:</span>
+                                        <strong style="color: var(--success);">${app.botsCount} / ${document.getElementById('statLimit').innerText}</strong>
+                                    </div>
+                                    <div class="detail-row">
+                                        <span>Heroku ID:</span>
+                                        <span style="font-family: var(--font-mono); font-size: 0.75rem;">${app.id.substring(0, 8)}...</span>
+                                    </div>
+                                </div>
+                                <div class="app-actions">
+                                    <button class="btn btn-secondary" onclick="redeployApp('${app.name}')">
+                                        <i class="fa-solid fa-rotate"></i> Redeploy
+                                    </button>
+                                    <button class="btn btn-danger" onclick="deleteApp('${app.name}', '${app.collectionName}')">
+                                        <i class="fa-solid fa-trash-can"></i> Delete
+                                    </button>
+                                </div>
+                            `;
+                            grid.appendChild(card);
+                        });
+                        
+                        document.getElementById('statAppsCount').innerText = apps.length;
+                        document.getElementById('statBotsCount').innerText = totalBots;
+                        
+                        log(`Successfully loaded and synchronized ${apps.length} Heroku applications.`);
+                    }
+                    
+                    statusPill.className = 'status-pill';
+                    statusText.innerText = 'System Active';
+                } else {
+                    throw new Error(data.message || 'Server error');
+                }
+            } catch (err) {
+                log(`Failed to synchronize apps list: ${err.message}`, 'err');
+                statusPill.className = 'status-pill';
+                statusText.innerText = 'Sync Error';
+                
+                document.getElementById('appsGrid').innerHTML = `
+                    <div class="app-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;">
+                        <i class="fa-solid fa-circle-xmark" style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--error);"></i>
+                        <p>Error Syncing with Heroku API.</p>
+                        <p style="font-size: 0.8rem; margin-top: 0.5rem; color: var(--error);">${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Form submit handler
+        document.getElementById('configForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const payload = {};
+            formData.forEach((value, key) => {
+                if ((key === 'herokuApiKey' || key === 'githubToken') && value === '••••••••••••••••••••••••') {
+                    return;
+                }
+                payload[key] = value;
+            });
+            
+            log('Saving configuration settings to MongoDB...');
+            
+            try {
+                const res = await fetchApi('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    log('Configuration saved successfully!', 'success');
+                    fetchConfig();
+                    fetchApps();
+                } else {
+                    log(`Failed to save settings: ${data.message}`, 'err');
+                }
+            } catch (err) {
+                log(`Failed to connect to API endpoint: ${err.message}`, 'err');
+            }
+        });
+
+        // Trigger manual deploy of new app
+        async function createNewApp() {
+            if (!confirm('Are you sure you want to spawn and deploy a new Heroku Dyno for the bots?')) return;
+            
+            log('Initiating deployment of a new Heroku application...', 'warn');
+            
+            try {
+                const res = await fetchApi('/api/apps/create', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    log(`Successfully triggered new deployment! App Name: ${data.appName}`, 'success');
+                    fetchApps();
+                } else {
+                    log(`Manual app creation failed: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Failed to connect to deploy endpoint: ${err.message}`, 'err');
+            }
+        }
+
+        // Redeploy app
+        async function redeployApp(appName) {
+            if (!confirm(`Are you sure you want to redeploy and update ${appName} using latest code from GitHub?`)) return;
+            
+            log(`Triggering redeployment of ${appName} from GitHub...`, 'warn');
+            
+            try {
+                const res = await fetchApi('/api/apps/redeploy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appName })
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    log(`Build successfully queued for ${appName}! Build ID: ${data.buildId}`, 'success');
+                } else {
+                    log(`Redeployment failed for ${appName}: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Connection error during redeploy request: ${err.message}`, 'err');
+            }
+        }
+
+        // Delete app
+        async function deleteApp(appName, collectionName) {
+            if (!confirm(`🚨 WARNING: Are you sure you want to delete ${appName}?\nThis will destroy the Heroku app AND remove its bot sessions from MongoDB!`)) return;
+            
+            log(`De-provisioning Heroku App ${appName} and clearing collection ${collectionName}...`, 'err');
+            
+            try {
+                const res = await fetchApi('/api/apps/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appName, collectionName })
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    log(`App ${appName} was successfully destroyed.`, 'success');
+                    fetchApps();
+                } else {
+                    log(`Failed to destroy app ${appName}: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Connection error during destroy request: ${err.message}`, 'err');
+            }
+        }
+
+        // Redistribute & Balance sessions across apps
+        async function redistributeSessions() {
+            if (!confirm('🚨 WARNING: This will reorganize ALL bot sessions in MongoDB to strictly respect the limit (e.g. 50 per app).\nIt will group them into collections (sfolder1_sessions, sfolder2_sessions...) and automatically trigger Heroku deployments for any missing dynos.\nAre you sure you want to proceed?')) return;
+            
+            log('Starting redistribution and balancing of all WhatsApp bot sessions...', 'warn');
+            
+            try {
+                const res = await fetchApi('/api/apps/redistribute', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    log(`Successfully redistributed sessions! Details:`, 'success');
+                    log(` - Total unique sessions: ${data.uniqueSessions}`);
+                    log(` - Managed collections: ${data.collectionsCount}`);
+                    log(` - Deployed/Verified apps: ${data.appsCount}`);
+                    fetchApps();
+                    alert(`Success: Reorganized into ${data.collectionsCount} collections and verified Heroku apps.`);
+                } else {
+                    log(`Redistribution failed: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Connection error during redistribution: ${err.message}`, 'err');
+            }
+        }
+
+        // Initial setup
+        window.addEventListener('load', async () => {
+            if (password) {
+                await fetchConfig();
+                await fetchApps();
+                setInterval(fetchApps, 45000);
+            }
+        });
+    </script>
+</body>
+</html>

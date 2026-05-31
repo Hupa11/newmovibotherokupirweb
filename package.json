@@ -1,0 +1,33 @@
+{
+  "name": "web-paibr",
+  "version": "0.0.1",
+  "description": "A multi functional whatsapp bot Web paircode.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "pm2 start index.js --deep-monitoring --attach --name asmd",
+    "stop": "pm2 stop asmd",
+    "restart": "pm2 restart asmd"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.21",
+    "@adiwajshing/keyed-db": "latest",
+    "@hapi/boom": "^10.0.1",
+    "@octokit/rest": "^20.0.2",
+    "awesome-phonenumber": "^2.64.0",
+    "qrcode": "latest",
+    "fs-extra": "^11.3.0",
+    "pg": "^8.16.3",
+    "pino": "^8.1.0",
+    "phone": "3.1.30",
+    "mongoose": "^8.2.0",
+    "body-parser": "^1.20.1",
+    "express": "^4.18.1",
+    "path": "latest",
+    "megajs": "latest",
+    "pm2": "^5.4.2",
+    "async-mutex": "latest",
+    "jimp": "^1.6.0",
+    "axios": "^1.2.5"
+  }
+}

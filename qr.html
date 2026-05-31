@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASITHA MD LITE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden; /* Prevent scrolling */
+            position: relative; /* Position relative for absolute children */
+        }
+
+        .background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('https://files.catbox.moe/uzeo1j.gif') no-repeat center center fixed;
+            background-size: cover; /* Cover the entire viewport */
+            filter: blur(15px); /* Blur effect */
+            z-index: 0; /* Behind the container */
+        }
+
+        #liveFrame > .container {
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            background-color: rgba(255, 255, 255, 0.8); /* Light background with transparency */
+            padding: 2rem;
+            border-radius: 14px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            position: relative; /* Position relative for z-index */
+            z-index: 1; /* Above the background */
+        }
+
+        .header {
+            color: #ff0000; /* Red for better contrast */
+            font-weight: 700;
+            margin-bottom: 1rem;
+            font-size: 1.8rem; /* Larger font size */
+        }
+
+        .qr-code img {
+            width: 100%;
+            max-width: 300px;
+            border-radius: 10px;
+            border: 5px solid #ff0000; /* Red border */
+            position: relative; /* Position for blur effect */
+            z-index: 1; /* Above the background */
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 5px; /* Height of the progress bar */
+            background-color: rgba(255, 255, 255, 0.5); /* Light background */
+            border-radius: 5px; /* Rounded corners */
+            margin-top: 10px; /* Space above the progress bar */
+            overflow: hidden; /* Hide overflow */
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%; /* Start with 0 width */
+            background-color: #ff0000; /* Red */
+            transition: width 1s linear; /* Transition effect */
+        }
+
+        .pair-button {
+            padding: 10px 15px;
+            background: #ff0000; /* Red */
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-top: 15px; /* Space above the button */
+            transition: background 0.3s, box-shadow 0.3s; /* Add transition for box-shadow */
+            font-weight: bold; /* Bold text */
+            box-shadow: 0 0 5px #ff0000, 0 0 10px #ff0000; /* Red effect */
+        }
+
+        .pair-button:hover {
+            background: #cc0000; /* Darker red on hover */
+            box-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000; /* Intensified effect on hover */
+        }
+
+        footer {
+            color: #000;
+            text-align: center;
+            padding: 10px 0;
+            margin-top: 1rem;
+            font-size: 0.9rem; /* Smaller font size */
+        }
+    </style>
+</head>
+
+<body>
+    <div class="background"></div>
+    <div id="liveFrame">
+        <div class="container">
+            <div class="header">QR CODE</div>
+            <div class="qr-code" id="qrCode">
+                <img src="/qr" alt="QR Code" id="qrImage"> <!-- QR Image Source -->
+            </div>
+            <div class="scan-text">Scan this within 30 seconds</div>
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <button class="pair-button" onclick="window.location.href='/pair'">Get Session Via PAIR CODE</button>
+            <footer>
+                <div>© Asitha MD Lite ❤️ 2025</div>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        let timeLeft = 30; // 30 seconds timer
+        const qrImage = document.getElementById('qrImage');
+        const progressBar = document.getElementById('progressBar');
+
+        function updateTimer() {
+            if (timeLeft <= 0) {
+                // Generate a new QR code (replace with your logic to generate a new QR code)
+                qrImage.src = `/qr?${new Date().getTime()}`;
+                timeLeft = 30; // Reset timer
+                progressBar.style.width = '0%'; // Reset progress bar
+            } else {
+                timeLeft--;
+            }
+        }
+
+        function updateProgressBar() {
+            const percentage = ((30 - timeLeft) / 30) * 100; // Calculate percentage
+            progressBar.style.width = `${percentage}%`; // Update progress bar width
+        }
+
+        setInterval(() => {
+            updateTimer();
+            updateProgressBar();
+        }, 1000); // Update every second
+    </script>
+</body>
+
+</html>

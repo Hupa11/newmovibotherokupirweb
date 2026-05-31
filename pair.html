@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ᴍɪɴɪ ʙᴏᴛ ᴡᴇʙ</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden; /* Prevent scrolling */
+            position: relative; /* Position relative for absolute children */
+        }
+
+        .background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('https://files.catbox.moe/uzeo1j.gif') no-repeat center center fixed;
+            background-size: cover; /* Cover the entire viewport */
+            filter: blur(15px); /* Blur effect */
+            z-index: 0; /* Behind the container */
+        }
+
+        .container {
+            position: relative;
+            z-index: 1; /* Above the background */
+            background-color: rgba(255, 255, 255, 0.8); /* Light background with transparency */
+            padding: 2rem;
+            border-radius: 14px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            text-align: center; /* Center text */
+            max-width: 400px; /* Max width for larger screens */
+            width: 90%; /* Responsive width */
+        }
+
+        .header {
+            color: #ff0000; /* Red for better contrast */
+            font-weight: 700;
+            margin-bottom: 1rem;
+            font-size: 1.8rem; /* Larger font size */
+        }
+
+        h3 {
+            color: #ff4500; /* Orange color for headers */
+            margin-bottom: 10px;
+            font-size: 2rem; /* Increased font size */
+        }
+
+        h6 {
+            color: #333; /* Darker color for subheader */
+            margin-bottom: 20px;
+            font-size: 1.2rem; /* Increased font size */
+        }
+
+        .input-container {
+            display: flex;
+            align-items: center;
+            border: 2px solid #ff4500; /* Orange border for the input container */
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .input-container input {
+            flex: 1;
+            padding: 12px;
+            border: none; /* Remove border for input field */
+            outline: none;
+            border-radius: 5px 0 0 5px;
+            background: #fff; /* White background for input */
+            color: #343; /* Dark text color */
+            font-size: 1rem; /* Slightly larger font size */
+        }
+
+        .input-container button {
+            padding: 12px 20px;
+            background: #ff4500; /* Orange button color */
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 0 5px 5px 0;
+            transition: background 0.3s;
+            font-weight: bold; /* Bold text */
+            font-size: 1rem; /* Slightly larger font size */
+        }
+
+        .input-container button:hover {
+            background: #cc3700; /* Darker orange on hover */
+        }
+
+        .qr-button {
+            padding: 12px 20px;
+            background: #cc3700; /* Dark orange */
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-top: 10px;
+            transition: background 0.3s, box-shadow 0.3s; /* Add transition for box-shadow */
+            font-weight: bold; /* Bold text */
+            font-size: 1rem; /* Slightly larger font size */
+            box-shadow: 0 0 5px #cc3700, 0 0 10px #cc3700, 0 0 20px #cc3700; /* Dark orange effect */
+        }
+
+        .qr-button:hover {
+            background: #ff4500; /* Lighter orange on hover */
+            box-shadow: 0 0 10px #cc3700, 0 0 20px #cc3700, 0 0 30px #cc3700; /* Intensified effect on hover */
+        }
+
+        .centered-text {
+            color: #000;
+            margin: 10px 0;
+            font-size: 1rem; /* Slightly larger font size */
+        }
+
+        #waiting-message {
+            display: none;
+            color: #ff4500; /* Changed to orange */
+            margin-top: 10px;
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #333; /* Change footer text color to dark gray */
+        }
+
+        #copy {
+            cursor: pointer;
+            color: #ff4500; /* Orange color for code text */
+            font-weight: bold;
+            text-decoration: underline; /* Underline for emphasis */
+        }
+
+        /* Media Queries for Responsive Design */
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px; /* Reduced padding on small screens */
+                border-radius: 15px; /* Slightly smaller border radius */
+            }
+
+            h3 {
+                font-size: 1.5rem; /* Smaller header font size */
+            }
+
+            h6 {
+                font-size: 1rem; /* Smaller subheader font size */
+            }
+
+            .input-container input {
+                font-size: 0.9rem; /* Smaller input font size */
+            }
+
+            .input-container button,
+            .qr-button {
+                font-size: 0.9rem; /* Smaller button font size */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background"></div>
+    <div class="container">
+        <h3>ᴍɪɴɪ ʙᴏᴛ ᴡᴇʙ</h3>
+        <h6>🔢 Enter your phone number with country code.</h6>
+        <div class="input-container">
+            <input placeholder="+9123456789" type="tel" id="number" name="">
+            <button id="submit">Submit</button>
+        </div>
+        <a id="waiting-message" class="centered-text">In Process...</a>
+        <main id="pair"></main>
+        <div class="footer">
+            <span id="qr-login">© asitha md lite ❤️ 2025</span>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
+    <script>
+        let a = document.getElementById("pair");
+        let b = document.getElementById("submit");
+        let c = document.getElementById("number");
+
+        b.addEventListener("click", async (e) => {
+            e.preventDefault();
+            b.style.background = '#cc3700'; // Change button color on click
+
+            if (!c.value) {
+                a.innerHTML = '<a style="color:red;font-weight:bold">❗Please enter your WhatsApp number.</a><br><br>';
+            } else if (c.value.replace(/[^0-9]/g, "").length < 11) {
+                a.innerHTML = '<a style="color:red;font-weight:bold">❌Invalid number format❌</a><br><br>';
+            } else {
+                const bc = c.value.replace(/[^0-9]/g, "");
+                let formattedNumber = `+${bc}`;
+                c.value = formattedNumber;
+                a.innerHTML = '<a style="color:black;font-weight:bold">Please wait... </a><br><br>';
+                let { data } = await axios(`/code?number=${formattedNumber}`);
+                let code = data.code || "Service Unavailable";
+                a.innerHTML = `<span id="copy" style="color:red;font-weight:bold">CODE: ${code}</span><br><br>`;
+                
+                document.getElementById("copy").addEventListener("click", () => {
+                    navigator.clipboard.writeText(code).then(() => {
+                        alert("Code copied to clipboard!");
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
