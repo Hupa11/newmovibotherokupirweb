@@ -279,7 +279,7 @@ router.get("/", async (req, res) => {
         version,
         printQRInTerminal: false,
         logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-        browser: Browsers.macOS("Safari"),
+        browser: ['Ubuntu', 'Chrome', '20.0.04'],
       });
 
       if (!RobinPairWeb.authState.creds.registered) {
