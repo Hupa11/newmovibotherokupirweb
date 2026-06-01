@@ -96,10 +96,10 @@ app.post('/api/config', verifyPassword, async (req, res) => {
         const { herokuApiKey, githubToken, githubRepo, githubBranch, botsPerAppLimit } = req.body;
         
         const updateData = {};
-        if (herokuApiKey !== undefined) updateData.herokuApiKey = herokuApiKey;
-        if (githubToken !== undefined) updateData.githubToken = githubToken;
-        if (githubRepo !== undefined) updateData.githubRepo = githubRepo;
-        if (githubBranch !== undefined) updateData.githubBranch = githubBranch;
+        if (herokuApiKey !== undefined) updateData.herokuApiKey = herokuApiKey.trim();
+        if (githubToken !== undefined) updateData.githubToken = githubToken.trim();
+        if (githubRepo !== undefined) updateData.githubRepo = githubRepo.trim();
+        if (githubBranch !== undefined) updateData.githubBranch = githubBranch.trim();
         if (botsPerAppLimit !== undefined) updateData.botsPerAppLimit = parseInt(botsPerAppLimit);
 
         await HerokuConfigModel.findOneAndUpdate({}, updateData, { upsert: true, new: true });
