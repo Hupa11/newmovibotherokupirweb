@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 
 let router = express.Router();
 
-const MONGODB_URI = "mongodb+srv://asithagunarathna9_db_user:om9gBosJdQKvifgh@moviebot.6cscp9o.mongodb.net/"; 
+const MONGODB_URI = "mongodb://asithagunarathna9_db_user:om9gBosJdQKvifgh@ac-4rt0jgu-shard-00-00.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-01.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-02.6cscp9o.mongodb.net:27017/test?ssl=true&replicaSet=atlas-8wympi-shard-0&authSource=admin"; 
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB Connected'))
@@ -46,7 +46,8 @@ const HerokuConfigSchema = new mongoose.Schema({
     githubToken: { type: String, default: "" },
     githubRepo: { type: String, default: "nbbb15092/Pair" },
     githubBranch: { type: String, default: "main" },
-    botsPerAppLimit: { type: Number, default: 50 }
+    botsPerAppLimit: { type: Number, default: 50 },
+    appPrefix: { type: String, default: "asitha-bot-app" }
 }, { collection: 'heroku_configs' });
 
 export const HerokuConfigModel = mongoose.models.HerokuConfig || mongoose.model('HerokuConfig', HerokuConfigSchema);
@@ -59,7 +60,8 @@ export async function getHerokuConfig() {
             githubToken: "",
             githubRepo: "nbbb15092/Pair",
             githubBranch: "main",
-            botsPerAppLimit: 50
+            botsPerAppLimit: 50,
+            appPrefix: "asitha-bot-app"
         });
     }
     return config;
@@ -132,12 +134,14 @@ export async function deployHerokuApp(appName, collectionName) {
 }
 
 export async function getTargetCollection(phoneNumber) {
+  const config = await getHerokuConfig();
+  const appPrefix = config.appPrefix || "asitha-bot-app";
+
   if (DEV_NUMBERS.includes(phoneNumber)) {
     const devIndex = 7;
-    const devAppName = `asitha-bot-app-${devIndex}`;
+    const devAppName = `${appPrefix}-${devIndex}`;
     
     try {
-      const config = await getHerokuConfig();
       if (config.herokuApiKey) {
         const headers = {
             'Authorization': `Bearer ${config.herokuApiKey}`,
@@ -162,7 +166,6 @@ export async function getTargetCollection(phoneNumber) {
   }
 
   try {
-    const config = await getHerokuConfig();
     const limit = config.botsPerAppLimit || 50;
 
     const db = mongoose.connection.db;
@@ -195,7 +198,7 @@ export async function getTargetCollection(phoneNumber) {
     }
 
     const newCollectionName = `sfolder${nextIndex}_sessions`;
-    const newAppName = `asitha-bot-app-${nextIndex}`;
+    const newAppName = `${appPrefix}-${nextIndex}`;
 
     console.log(`🚨 All apps are full. Creating a new Heroku App: ${newAppName} using collection: ${newCollectionName}`);
     
