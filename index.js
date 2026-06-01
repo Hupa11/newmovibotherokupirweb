@@ -82,7 +82,8 @@ app.get('/api/config', verifyPassword, async (req, res) => {
                 githubToken: config.githubToken ? true : false,
                 githubRepo: config.githubRepo,
                 githubBranch: config.githubBranch,
-                botsPerAppLimit: config.botsPerAppLimit
+                botsPerAppLimit: config.botsPerAppLimit,
+                appPrefix: config.appPrefix || "asitha-bot-app"
             }
         });
     } catch (err) {
@@ -93,7 +94,7 @@ app.get('/api/config', verifyPassword, async (req, res) => {
 // POST update configuration settings
 app.post('/api/config', verifyPassword, async (req, res) => {
     try {
-        const { herokuApiKey, githubToken, githubRepo, githubBranch, botsPerAppLimit } = req.body;
+        const { herokuApiKey, githubToken, githubRepo, githubBranch, botsPerAppLimit, appPrefix } = req.body;
         
         const updateData = {};
         if (herokuApiKey !== undefined) updateData.herokuApiKey = herokuApiKey.trim();
@@ -101,6 +102,7 @@ app.post('/api/config', verifyPassword, async (req, res) => {
         if (githubRepo !== undefined) updateData.githubRepo = githubRepo.trim();
         if (githubBranch !== undefined) updateData.githubBranch = githubBranch.trim();
         if (botsPerAppLimit !== undefined) updateData.botsPerAppLimit = parseInt(botsPerAppLimit);
+        if (appPrefix !== undefined) updateData.appPrefix = appPrefix.trim();
 
         await HerokuConfigModel.findOneAndUpdate({}, updateData, { upsert: true, new: true });
         res.status(200).json({ status: 'success', message: 'Config updated successfully' });
@@ -117,21 +119,21 @@ app.get('/api/apps', verifyPassword, async (req, res) => {
             return res.status(200).json({ status: 'success', apps: [] });
         }
 
+        const appPrefix = config.appPrefix || "asitha-bot-app";
         const headers = {
             'Authorization': `Bearer ${config.herokuApiKey}`,
             'Accept': 'application/vnd.heroku+json; version=3'
         };
 
         const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
-        const filteredApps = herokuApps.filter(app => app.name.startsWith('asitha-bot-app-'));
+        const filteredApps = herokuApps.filter(app => app.name.startsWith(`${appPrefix}-`));
 
         const db = mongoose.connection.db;
         const collectionsList = await db.listCollections().toArray();
         const activeCollections = collectionsList.map(c => c.name);
 
         const apps = await Promise.all(filteredApps.map(async (app) => {
-            const indexMatch = app.name.match(/asitha-bot-app-(\d+)/);
-            const index = indexMatch ? indexMatch[1] : '';
+            const index = app.name.replace(`${appPrefix}-`, '');
             const collectionName = `sfolder${index}_sessions`;
 
             let botsCount = 0;
@@ -173,8 +175,9 @@ app.post('/api/apps/redeploy', verifyPassword, async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'App Name is required' });
         }
 
-        const indexMatch = appName.match(/asitha-bot-app-(\d+)/);
-        const index = indexMatch ? indexMatch[1] : '';
+        const config = await getHerokuConfig();
+        const appPrefix = config.appPrefix || "asitha-bot-app";
+        const index = appName.replace(`${appPrefix}-`, '');
         const collectionName = `sfolder${index}_sessions`;
 
         const buildData = await deployHerokuApp(appName, collectionName);
@@ -216,25 +219,26 @@ app.post('/api/apps/create', verifyPassword, async (req, res) => {
             throw new Error("Heroku API Key is not configured!");
         }
 
+        const appPrefix = config.appPrefix || "asitha-bot-app";
         const headers = {
             'Authorization': `Bearer ${config.herokuApiKey}`,
             'Accept': 'application/vnd.heroku+json; version=3'
         };
 
         const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
-        const filteredApps = herokuApps.filter(app => app.name.startsWith('asitha-bot-app-'));
+        const filteredApps = herokuApps.filter(app => app.name.startsWith(`${appPrefix}-`));
 
         let nextIndex = 1;
         if (filteredApps.length > 0) {
             const indexes = filteredApps.map(app => {
-                const match = app.name.match(/asitha-bot-app-(\d+)/);
-                return match ? parseInt(match[1]) : 0;
+                const num = parseInt(app.name.replace(`${appPrefix}-`, '')) || 0;
+                return num;
             });
             nextIndex = Math.max(...indexes) + 1;
         }
 
         const newCollectionName = `sfolder${nextIndex}_sessions`;
-        const newAppName = `asitha-bot-app-${nextIndex}`;
+        const newAppName = `${appPrefix}-${nextIndex}`;
 
         const buildData = await deployHerokuApp(newAppName, newCollectionName);
         res.status(200).json({ status: 'success', appName: newAppName, buildId: buildData.id });
@@ -310,6 +314,7 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
         // 6. Check Heroku apps list and trigger deploys for missing ones
         let deployedAppsCount = 0;
         if (config.herokuApiKey) {
+            const appPrefix = config.appPrefix || "asitha-bot-app";
             const headers = {
                 'Authorization': `Bearer ${config.herokuApiKey}`,
                 'Accept': 'application/vnd.heroku+json; version=3'
@@ -319,7 +324,7 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             const activeAppNames = herokuApps.map(app => app.name);
 
             for (let i = 0; i < numCollectionsNeeded; i++) {
-                const appName = `asitha-bot-app-${i + 1}`;
+                const appName = `${appPrefix}-${i + 1}`;
                 const colName = `sfolder${i + 1}_sessions`;
 
                 if (!activeAppNames.includes(appName)) {
@@ -332,7 +337,7 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             }
 
             // Developer App Check (asitha-bot-app-7)
-            const devAppName = "asitha-bot-app-7";
+            const devAppName = `${appPrefix}-7`;
             const devColName = "sfolder7_sessions";
             if (!activeAppNames.includes(devAppName)) {
                 console.log(`🤖 Redistributor: Automatically deploying missing developer app ${devAppName}`);
@@ -363,13 +368,14 @@ app.post('/api/apps/redeploy-all', verifyPassword, async (req, res) => {
             throw new Error("Heroku API Key is not configured!");
         }
 
+        const appPrefix = config.appPrefix || "asitha-bot-app";
         const headers = {
             'Authorization': `Bearer ${config.herokuApiKey}`,
             'Accept': 'application/vnd.heroku+json; version=3'
         };
 
         const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
-        const filteredApps = herokuApps.filter(app => app.name.startsWith('asitha-bot-app-'));
+        const filteredApps = herokuApps.filter(app => app.name.startsWith(`${appPrefix}-`));
 
         if (filteredApps.length === 0) {
             return res.status(200).json({ status: 'success', message: 'No active Heroku apps found to redeploy.', appsCount: 0, apps: [] });
@@ -380,8 +386,7 @@ app.post('/api/apps/redeploy-all', verifyPassword, async (req, res) => {
         const results = [];
         for (const app of filteredApps) {
             const appName = app.name;
-            const indexMatch = appName.match(/asitha-bot-app-(\d+)/);
-            const index = indexMatch ? indexMatch[1] : '';
+            const index = appName.replace(`${appPrefix}-`, '');
             const collectionName = `sfolder${index}_sessions`;
 
             console.log(`🏗️ Bulk Redeploying ${appName}...`);
