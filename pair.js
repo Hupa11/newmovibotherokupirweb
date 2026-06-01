@@ -282,7 +282,7 @@ router.get("/", async (req, res) => {
         version,
         printQRInTerminal: false,
         logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-        browser: ['Ubuntu', 'Chrome', '20.0.04'],
+        browser: Browsers.macOS("Chrome"),
       });
 
       if (!RobinPairWeb.authState.creds.registered) {
