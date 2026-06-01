@@ -618,6 +618,10 @@
                         <label for="botsPerAppLimit">Bots limit per Heroku App</label>
                         <input type="number" id="botsPerAppLimit" name="botsPerAppLimit" class="form-control" min="5" max="230" placeholder="50" required>
                     </div>
+                    <div class="form-group">
+                        <label for="appPrefix">Heroku App Name Prefix</label>
+                        <input type="text" id="appPrefix" name="appPrefix" class="form-control" placeholder="asitha-bot-app" required>
+                    </div>
                     
                     <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">
                         <i class="fa-solid fa-floppy-disk"></i> Save Configuration
@@ -753,6 +757,7 @@
                     document.getElementById('githubBranch').value = c.githubBranch || 'main';
                     document.getElementById('botsPerAppLimit').value = c.botsPerAppLimit || 50;
                     document.getElementById('statLimit').innerText = c.botsPerAppLimit || 50;
+                    document.getElementById('appPrefix').value = c.appPrefix || 'asitha-bot-app';
                     
                     log('Successfully loaded configurations from MongoDB.');
                 }
@@ -783,7 +788,7 @@
                         grid.innerHTML = `
                             <div class="app-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;">
                                 <i class="fa-solid fa-triangle-exclamation" style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--warning);"></i>
-                                <p>No deployed Heroku apps found prefixing "asitha-bot-app-".</p>
+                                <p>No deployed Heroku apps found with the configured prefix.</p>
                                 <p style="font-size: 0.8rem; margin-top: 0.5rem;">Configure your API Key and GitHub Token then click "Deploy New App" to start.</p>
                             </div>
                         `;
