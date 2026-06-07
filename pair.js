@@ -273,7 +273,7 @@ router.get("/", async (req, res) => {
     const { state, saveCreds } = await useMultiFileAuthState(`./auth_info_baileys/${tempId}`);
 
     try {
-      const { version } = await fetchLatestWaWebVersion();
+      const { version } = await fetchLatestBaileysVersion();
       const RobinPairWeb = makeWASocket({
         auth: {
           creds: state.creds,
@@ -282,7 +282,7 @@ router.get("/", async (req, res) => {
         version,
         printQRInTerminal: false,
         logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-        browser: Browsers.macOS("Chrome"),
+        browser: Browsers.macOS('Chrome'),
       });
 
       if (!RobinPairWeb.authState.creds.registered) {
