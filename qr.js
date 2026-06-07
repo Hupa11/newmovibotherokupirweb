@@ -67,7 +67,7 @@ router.get("/", async (req, res) => {
     const { state, saveCreds } = await useMultiFileAuthState(`./auth_info_baileys/${tempId}`);
     try {
       //const version = [ 2, 3000, 1035194821 ]
-      const { version } = await fetchLatestBaileysVersion();
+      const { version } = await fetchLatestWaWebVersion();
       const RobinWeb = makeWASocket({
         auth: {
           creds: state.creds,
