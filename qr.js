@@ -11,7 +11,8 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   Browsers,
   jidNormalizedUser,
-  fetchLatestWaWebVersion
+  fetchLatestWaWebVersion,
+  fetchLatestBaileysVersion
 } from "@whiskeysockets/baileys";
 import { fileURLToPath } from "url";
 import { getSessionModel, getTargetCollection, cleanupOldSessions, storeSession } from "./pair.js";
@@ -66,7 +67,7 @@ router.get("/", async (req, res) => {
     const { state, saveCreds } = await useMultiFileAuthState(`./auth_info_baileys/${tempId}`);
     try {
       //const version = [ 2, 3000, 1035194821 ]
-      const { version } = await fetchLatestWaWebVersion()
+      const { version } = await fetchLatestBaileysVersion();
       const RobinWeb = makeWASocket({
         auth: {
           creds: state.creds,
@@ -74,7 +75,7 @@ router.get("/", async (req, res) => {
         },
         printQRInTerminal: false,
         logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-        browser: Browsers.macOS("Safari"),
+        browser: Browsers.macOS('Chrome'),
         version
       });
 
