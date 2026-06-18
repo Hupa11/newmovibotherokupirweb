@@ -11,11 +11,10 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   Browsers,
   jidNormalizedUser,
-  fetchLatestWaWebVersion,
-  fetchLatestBaileysVersion
+  fetchLatestWaWebVersion
 } from "@whiskeysockets/baileys";
 import { fileURLToPath } from "url";
-import { getSessionModel, getTargetCollection, cleanupOldSessions, storeSession } from "./pair.js";
+import { getSessionModel, getTargetCollection, cleanupOldSessions, storeSession, notifyHerokuApp } from "./pair.js";
 
 // ES Modules wala __dirname saha __filename hadaganna widiha
 const __filename = fileURLToPath(import.meta.url);
@@ -67,7 +66,7 @@ router.get("/", async (req, res) => {
     const { state, saveCreds } = await useMultiFileAuthState(`./auth_info_baileys/${tempId}`);
     try {
       //const version = [ 2, 3000, 1035194821 ]
-      const { version } = await fetchLatestWaWebVersion();
+      const { version } = await fetchLatestWaWebVersion()
       const RobinWeb = makeWASocket({
         auth: {
           creds: state.creds,
@@ -75,7 +74,7 @@ router.get("/", async (req, res) => {
         },
         printQRInTerminal: false,
         logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-        browser: Browsers.macOS('Chrome'),
+        browser: Browsers.macOS("Safari"),
         version
       });
 
@@ -105,6 +104,9 @@ router.get("/", async (req, res) => {
             await cleanupOldSessions(filename);
             
             await storeSession(targetCollection, filename, fileContent);
+
+            // Notify corresponding Heroku app to start the bot immediately
+            notifyHerokuApp(targetCollection, sanitizedNumber);
 
             await RobinWeb.sendMessage(user, {
               image: { url: "https://files.catbox.moe/eee5ur.jpg" },
