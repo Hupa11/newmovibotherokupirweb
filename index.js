@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 
 // Local files import karaddi aniwaryen extension eka danna one (.js or .mjs)
 import server from './qr.js'; 
-import code, { HerokuConfigModel, getHerokuConfig, deployHerokuApp, getSessionModel } from './pair.js';
+import code, { HerokuConfigModel, getHerokuConfig, deployHerokuApp, getSessionModel, getHerokuLogs, getHerokuBuilds, getHerokuBuildLogs, checkAndAutoRestart } from './pair.js';
 
 const app = express();
 const path = process.cwd(); // process global nisa meka awulak na
@@ -83,7 +83,10 @@ app.get('/api/config', verifyPassword, async (req, res) => {
                 githubRepo: config.githubRepo,
                 githubBranch: config.githubBranch,
                 botsPerAppLimit: config.botsPerAppLimit,
-                appPrefix: config.appPrefix || "asitha-bot-app"
+                appPrefix: config.appPrefix || "asitha-bot-app",
+                devGithubRepo: config.devGithubRepo || "",
+                devGithubBranch: config.devGithubBranch || "",
+                autoRestartInterval: config.autoRestartInterval || 0
             }
         });
     } catch (err) {
@@ -94,7 +97,7 @@ app.get('/api/config', verifyPassword, async (req, res) => {
 // POST update configuration settings
 app.post('/api/config', verifyPassword, async (req, res) => {
     try {
-        const { herokuApiKey, githubToken, githubRepo, githubBranch, botsPerAppLimit, appPrefix } = req.body;
+        const { herokuApiKey, githubToken, githubRepo, githubBranch, botsPerAppLimit, appPrefix, devGithubRepo, devGithubBranch, autoRestartInterval } = req.body;
         
         const updateData = {};
         if (herokuApiKey !== undefined) updateData.herokuApiKey = herokuApiKey.trim();
@@ -103,6 +106,9 @@ app.post('/api/config', verifyPassword, async (req, res) => {
         if (githubBranch !== undefined) updateData.githubBranch = githubBranch.trim();
         if (botsPerAppLimit !== undefined) updateData.botsPerAppLimit = parseInt(botsPerAppLimit);
         if (appPrefix !== undefined) updateData.appPrefix = appPrefix.trim();
+        if (devGithubRepo !== undefined) updateData.devGithubRepo = devGithubRepo.trim();
+        if (devGithubBranch !== undefined) updateData.devGithubBranch = devGithubBranch.trim();
+        if (autoRestartInterval !== undefined) updateData.autoRestartInterval = parseInt(autoRestartInterval);
 
         await HerokuConfigModel.findOneAndUpdate({}, updateData, { upsert: true, new: true });
         res.status(200).json({ status: 'success', message: 'Config updated successfully' });
@@ -263,9 +269,9 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
 
         // 1. Fetch all session documents from all collections
         const allSessions = [];
-        for (const colName of sessionCollections) {
+                for (const colName of sessionCollections) {
             const Model = getSessionModel(colName);
-            const docs = await Model.find({});
+            const docs = await Model.find({}).read('primary');
             docs.forEach(doc => {
                 allSessions.push({
                     filename: doc.filename,
@@ -401,6 +407,43 @@ app.post('/api/apps/redeploy-all', verifyPassword, async (req, res) => {
         res.status(500).json({ status: 'error', message: err.message });
     }
 });
+
+// GET runtime logs for a specific Heroku app
+app.get('/api/apps/:appName/logs', verifyPassword, async (req, res) => {
+    try {
+        const { appName } = req.params;
+        const logs = await getHerokuLogs(appName);
+        res.status(200).json({ status: 'success', logs });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// GET recent builds list for a specific Heroku app
+app.get('/api/apps/:appName/builds', verifyPassword, async (req, res) => {
+    try {
+        const { appName } = req.params;
+        const builds = await getHerokuBuilds(appName);
+        res.status(200).json({ status: 'success', builds });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// GET build logs for a specific build of a Heroku app
+app.get('/api/apps/:appName/builds/:buildId/logs', verifyPassword, async (req, res) => {
+    try {
+        const { appName, buildId } = req.params;
+        const logs = await getHerokuBuildLogs(appName, buildId);
+        res.status(200).json({ status: 'success', logs });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// Start the periodic auto-restart check
+checkAndAutoRestart(); // run once on startup
+setInterval(checkAndAutoRestart, 5 * 60 * 1000); // run every 5 minutes
 
 //====================================
 
