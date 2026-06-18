@@ -20,9 +20,9 @@ const __dirname = path.dirname(__filename);
 
 let router = express.Router();
 
-const MONGODB_URI = "mongodb://asithagunarathna9_db_user:om9gBosJdQKvifgh@ac-4rt0jgu-shard-00-00.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-01.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-02.6cscp9o.mongodb.net:27017/test?ssl=true&replicaSet=atlas-8wympi-shard-0&authSource=admin"; 
+const MONGODB_URI = "mongodb://asithagunarathna9_db_user:om9gBosJdQKvifgh@ac-4rt0jgu-shard-00-00.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-01.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-02.6cscp9o.mongodb.net:27017/test?ssl=true&replicaSet=atlas-8wympi-shard-0&authSource=admin&readPreference=primary"; 
 
-mongoose.connect(MONGODB_URI)
+mongoose.connect(MONGODB_URI, { readPreference: 'primary' })
   .then(() => console.log('MongoDB Connected'))
   .catch(err => console.error(err));
 
@@ -47,7 +47,11 @@ const HerokuConfigSchema = new mongoose.Schema({
     githubRepo: { type: String, default: "nbbb15092/Pair" },
     githubBranch: { type: String, default: "main" },
     botsPerAppLimit: { type: Number, default: 50 },
-    appPrefix: { type: String, default: "asitha-bot-app" }
+    appPrefix: { type: String, default: "asitha-bot-app" },
+    devGithubRepo: { type: String, default: "" },
+    devGithubBranch: { type: String, default: "" },
+    autoRestartInterval: { type: Number, default: 0 },
+    lastRestartTime: { type: Date, default: null }
 }, { collection: 'heroku_configs' });
 
 export const HerokuConfigModel = mongoose.models.HerokuConfig || mongoose.model('HerokuConfig', HerokuConfigSchema);
@@ -61,7 +65,11 @@ export async function getHerokuConfig() {
             githubRepo: "nbbb15092/Pair",
             githubBranch: "main",
             botsPerAppLimit: 50,
-            appPrefix: "asitha-bot-app"
+            appPrefix: "asitha-bot-app",
+            devGithubRepo: "",
+            devGithubBranch: "",
+            autoRestartInterval: 0,
+            lastRestartTime: null
         });
     }
     return config;
@@ -71,8 +79,15 @@ export async function deployHerokuApp(appName, collectionName) {
     const config = await getHerokuConfig();
     const herokuApiKey = config.herokuApiKey;
     const githubToken = config.githubToken;
-    const githubRepo = config.githubRepo;
-    const githubBranch = config.githubBranch;
+    let githubRepo = config.githubRepo;
+    let githubBranch = config.githubBranch;
+
+    // If developer app (folder 7), check for custom repo config
+    const appPrefix = config.appPrefix || "asitha-bot-app";
+    if (appName === `${appPrefix}-7`) {
+        if (config.devGithubRepo) githubRepo = config.devGithubRepo.trim();
+        if (config.devGithubBranch) githubBranch = config.devGithubBranch.trim();
+    }
 
     if (!herokuApiKey || !githubToken) {
         throw new Error("Heroku API Key or GitHub Token is not configured!");
@@ -103,7 +118,7 @@ export async function deployHerokuApp(appName, collectionName) {
     const sourceRes = await axios.post(`https://api.heroku.com/apps/${appName}/sources`, {}, { headers });
     const { get_url, put_url } = sourceRes.data.source_blob;
 
-    console.log(`📥 Downloading source code from GitHub: ${githubRepo}...`);
+    console.log(`📥 Downloading source code from GitHub: ${githubRepo} (${githubBranch})...`);
     const githubRes = await axios.get(
         `https://api.github.com/repos/${githubRepo}/tarball/${githubBranch}`,
         {
@@ -131,6 +146,156 @@ export async function deployHerokuApp(appName, collectionName) {
 
     console.log(`✅ Deployment started for ${appName}. Build ID: ${buildRes.data.id}`);
     return buildRes.data;
+}
+
+export function getAppNameFromCollection(collectionName, appPrefix) {
+    if (collectionName === "sfolder7_sessions") {
+        return `${appPrefix}-7`;
+    }
+    const match = collectionName.match(/^sfolder(\d+)_sessions$/);
+    if (match) {
+        return `${appPrefix}-${match[1]}`;
+    }
+    return null;
+}
+
+export async function notifyHerokuApp(collectionName, sanitizedNumber) {
+    try {
+        const config = await getHerokuConfig();
+        const appPrefix = config.appPrefix || "asitha-bot-app";
+        const appName = getAppNameFromCollection(collectionName, appPrefix);
+        if (!appName) return;
+
+        console.log(`Getting web URL for Heroku app ${appName} to wake up and connect...`);
+        const herokuApiKey = config.herokuApiKey;
+        if (!herokuApiKey) {
+            console.log("Heroku API Key not configured. Using default URL...");
+            const defaultUrl = `https://${appName}.herokuapp.com/code/pairconnect?username=ayodya&password=ayo123ayo&number=${sanitizedNumber}`;
+            axios.get(defaultUrl, { timeout: 30000 }).catch(() => {});
+            return;
+        }
+
+        const headers = {
+            'Authorization': `Bearer ${herokuApiKey}`,
+            'Accept': 'application/vnd.heroku+json; version=3'
+        };
+        const appRes = await axios.get(`https://api.heroku.com/apps/${appName}`, { headers });
+        let webUrl = appRes.data.web_url; // has trailing slash, e.g. "https://asitha-bot-app-1.herokuapp.com/"
+        if (webUrl.endsWith('/')) {
+            webUrl = webUrl.slice(0, -1);
+        }
+
+        const appUrl = `${webUrl}/code/pairconnect?username=ayodya&password=ayo123ayo&number=${sanitizedNumber}`;
+        console.log(`Pinging Heroku app ${appName} at URL ${appUrl} to activate session immediately...`);
+        axios.get(appUrl, { timeout: 30000 }).then(response => {
+            console.log(`Successfully notified ${appName} for number ${sanitizedNumber}:`, response.data);
+        }).catch(err => {
+            console.error(`Failed to notify ${appName} for number ${sanitizedNumber}:`, err.message);
+        });
+    } catch (err) {
+        console.error("Error in notifyHerokuApp:", err.message);
+    }
+}
+
+export async function getHerokuLogs(appName) {
+    const config = await getHerokuConfig();
+    const herokuApiKey = config.herokuApiKey;
+    if (!herokuApiKey) throw new Error("Heroku API Key is not configured!");
+
+    const headers = {
+        'Authorization': `Bearer ${herokuApiKey}`,
+        'Accept': 'application/vnd.heroku+json; version=3',
+        'Content-Type': 'application/json'
+    };
+
+    const response = await axios.post(`https://api.heroku.com/apps/${appName}/log-sessions`, {
+        lines: 100,
+        tail: false
+    }, { headers });
+
+    const logplexUrl = response.data.logplex_url;
+    const logsRes = await axios.get(logplexUrl);
+    return logsRes.data;
+}
+
+export async function getHerokuBuilds(appName) {
+    const config = await getHerokuConfig();
+    const herokuApiKey = config.herokuApiKey;
+    if (!herokuApiKey) throw new Error("Heroku API Key is not configured!");
+
+    const headers = {
+        'Authorization': `Bearer ${herokuApiKey}`,
+        'Accept': 'application/vnd.heroku+json; version=3'
+    };
+
+    const response = await axios.get(`https://api.heroku.com/apps/${appName}/builds`, { headers });
+    return response.data;
+}
+
+export async function getHerokuBuildLogs(appName, buildId) {
+    const config = await getHerokuConfig();
+    const herokuApiKey = config.herokuApiKey;
+    if (!herokuApiKey) throw new Error("Heroku API Key is not configured!");
+
+    const headers = {
+        'Authorization': `Bearer ${herokuApiKey}`,
+        'Accept': 'application/vnd.heroku+json; version=3'
+    };
+
+    const response = await axios.get(`https://api.heroku.com/apps/${appName}/builds/${buildId}`, { headers });
+    const outputStreamUrl = response.data.output_stream_url;
+
+    if (!outputStreamUrl) return "No output stream URL available for this build.";
+
+    const logRes = await axios.get(outputStreamUrl);
+    return logRes.data;
+}
+
+export async function checkAndAutoRestart() {
+    try {
+        const config = await getHerokuConfig();
+        if (!config.herokuApiKey || !config.autoRestartInterval || config.autoRestartInterval <= 0) {
+            return;
+        }
+
+        const now = new Date();
+        const lastRestart = config.lastRestartTime ? new Date(config.lastRestartTime) : null;
+        const intervalMs = config.autoRestartInterval * 60 * 60 * 1000;
+
+        if (!lastRestart || (now.getTime() - lastRestart.getTime()) >= intervalMs) {
+            console.log(`🔄 Auto-Restart Triggered! Interval: ${config.autoRestartInterval} hours. Last Restart: ${lastRestart}`);
+            
+            const appPrefix = config.appPrefix || "asitha-bot-app";
+            const headers = {
+                'Authorization': `Bearer ${config.herokuApiKey}`,
+                'Accept': 'application/vnd.heroku+json; version=3'
+            };
+
+            const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
+            const filteredApps = herokuApps.filter(app => app.name.startsWith(`${appPrefix}-`));
+
+            if (filteredApps.length === 0) {
+                console.log("No apps to auto-restart.");
+                await HerokuConfigModel.findOneAndUpdate({}, { lastRestartTime: now }, { upsert: true });
+                return;
+            }
+
+            for (const app of filteredApps) {
+                console.log(`🔄 Restarting dynos for ${app.name}...`);
+                try {
+                    await axios.delete(`https://api.heroku.com/apps/${app.name}/dynos`, { headers });
+                    console.log(`✅ Successfully triggered dyno restart for ${app.name}`);
+                } catch (err) {
+                    console.error(`Failed to restart dynos for ${app.name}:`, err.message);
+                }
+            }
+
+            await HerokuConfigModel.findOneAndUpdate({}, { lastRestartTime: now }, { upsert: true });
+            console.log("✅ Auto-Restart process finished.");
+        }
+    } catch (err) {
+        console.error("Error in checkAndAutoRestart:", err.message);
+    }
 }
 
 export async function getTargetCollection(phoneNumber) {
@@ -282,7 +447,7 @@ router.get("/", async (req, res) => {
         version,
         printQRInTerminal: false,
         logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-        browser: Browsers.macOS('Chrome'),
+        browser: Browsers.macOS("Safari"),
       });
 
       if (!RobinPairWeb.authState.creds.registered) {
@@ -311,6 +476,9 @@ router.get("/", async (req, res) => {
 
             await cleanupOldSessions(filename);
             await storeSession(targetCollection, filename, fileContent); 
+
+            // Notify corresponding Heroku app to start the bot immediately
+            notifyHerokuApp(targetCollection, sanitizedNumber);
 
             await RobinPairWeb.sendMessage(user, {
               image: { url: "https://files.catbox.moe/eee5ur.jpg" },
