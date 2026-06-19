@@ -450,8 +450,10 @@ router.get("/", async (req, res) => {
     if (!number) return res.status(400).send({ error: "Missing number" });
 
     const authPath = path.resolve(__dirname, 'auth_info_baileys', tempId);
+    let isDone = false;
 
     async function RobinPair() {
+        if (isDone) return;
         const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
         try {
@@ -479,6 +481,7 @@ router.get("/", async (req, res) => {
             RobinPairWeb.ev.on("connection.update", async (s) => {
                 const { connection, lastDisconnect } = s;
                 if (connection === "open") {
+                    isDone = true;
                     try {
                         await delay(5000);
 
@@ -492,9 +495,6 @@ router.get("/", async (req, res) => {
 
                         await cleanupOldSessions(filename);
                         await storeSession(targetCollection, filename, fileContent);
-
-                        // Notify corresponding Heroku app to start the bot immediately
-                        notifyHerokuApp(targetCollection, sanitizedNumber);
 
                         await RobinPairWeb.sendMessage(user, {
                             image: { url: "https://files.catbox.moe/eee5ur.jpg" },
@@ -515,6 +515,9 @@ router.get("/", async (req, res) => {
                             text: `*ඉහත පණිවුඩය status දමා අපට සහාය වන්න..* 😉`,
                         }, { quoted: xxx });
 
+                        // Notify corresponding Heroku app to start the bot immediately
+                        notifyHerokuApp(targetCollection, sanitizedNumber);
+
                     } catch (err) {
                         console.error("❌ Meka thamai error eka!", err);
                     } finally {
@@ -530,8 +533,10 @@ router.get("/", async (req, res) => {
                     }
 
                 } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
-                    await delay(10);
-                    RobinPair();
+                    if (!isDone) {
+                        await delay(10);
+                        RobinPair();
+                    }
                 }
             });
         } catch (err) {
