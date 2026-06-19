@@ -134,8 +134,14 @@ router.get("/", async (req, res) => {
           } catch (err) {
             console.error(err.message);
           } finally {
-            await delay(100);
-            await RobinWeb.ws.close();
+            try {
+              RobinWeb.ev.removeAllListeners("connection.update");
+              RobinWeb.ev.removeAllListeners("creds.update");
+            } catch (err) { }
+            try {
+              await RobinWeb.ws.close();
+            } catch (err) { }
+            await delay(5000);
             removeFile(authPath);
             if (!res.headersSent) res.end(); 
           }
