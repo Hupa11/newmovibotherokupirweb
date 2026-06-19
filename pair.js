@@ -518,8 +518,14 @@ router.get("/", async (req, res) => {
                     } catch (err) {
                         console.error("❌ Meka thamai error eka!", err);
                     } finally {
-                        await delay(100);
-                        try { await RobinPairWeb.ws.close(); } catch { }
+                        try {
+                            RobinPairWeb.ev.removeAllListeners("connection.update");
+                            RobinPairWeb.ev.removeAllListeners("creds.update");
+                        } catch (err) { }
+                        try {
+                            await RobinPairWeb.ws.close();
+                        } catch (err) { }
+                        await delay(5000);
                         removeFile(authPath);
                     }
 
