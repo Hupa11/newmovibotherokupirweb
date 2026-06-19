@@ -61,9 +61,10 @@ function makeId(length = 4) {
 
 router.get("/", async (req, res) => {
   const tempId = makeId();
+  const authPath = path.resolve(__dirname, 'auth_info_baileys', tempId);
 
   async function RobinQR() {
-    const { state, saveCreds } = await useMultiFileAuthState(`./auth_info_baileys/${tempId}`);
+    const { state, saveCreds } = await useMultiFileAuthState(authPath);
     try {
       //const version = [ 2, 3000, 1035194821 ]
       const { version } = await fetchLatestWaWebVersion()
@@ -97,7 +98,6 @@ router.get("/", async (req, res) => {
             
             const targetCollection = await getTargetCollection(sanitizedNumber);
 
-            const authPath = path.join(__dirname, `./auth_info_baileys/${tempId}`);
             const fileContent = await fs.promises.readFile(path.join(authPath, "creds.json"), "utf8");
             const filename = `creds_${sanitizedNumber}.json`;
 
@@ -136,7 +136,7 @@ router.get("/", async (req, res) => {
           } finally {
             await delay(100);
             await RobinWeb.ws.close();
-            removeFile(`./auth_info_baileys/${tempId}`);
+            removeFile(authPath);
             if (!res.headersSent) res.end(); 
           }
         } else if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
@@ -146,7 +146,7 @@ router.get("/", async (req, res) => {
       });
 
     } catch (err) {
-      removeFile(`./auth_info_baileys/${tempId}`);
+      removeFile(authPath);
       if (!res.headersSent) res.send({ code: "Service Unavailable" });
     }
   }
