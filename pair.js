@@ -109,12 +109,25 @@ export async function deployHerokuApp(appName, collectionName) {
         }
     }
 
+    let webUrl = `https://${appName}.herokuapp.com`;
+    try {
+        const appRes = await axios.get(`https://api.heroku.com/apps/${appName}`, { headers });
+        if (appRes.data && appRes.data.web_url) {
+            webUrl = appRes.data.web_url;
+            if (webUrl.endsWith('/')) {
+                webUrl = webUrl.slice(0, -1);
+            }
+        }
+    } catch (e) {
+        console.error("❌ Error fetching app info from Heroku:", e.message);
+    }
+
     await axios.patch(`https://api.heroku.com/apps/${appName}/config-vars`, {
         MONGODB_URI: mongoose.connection.client?.s?.url || MONGODB_URI,
         COLLECTION_NAME: collectionName,
         PORT: "5000",
         HEROKU_APP_NAME: appName,
-        APP_URL: `https://${appName}.herokuapp.com`
+        APP_URL: webUrl
     }, { headers });
 
     const sourceRes = await axios.post(`https://api.heroku.com/apps/${appName}/sources`, {}, { headers });
