@@ -62,8 +62,10 @@ function makeId(length = 4) {
 router.get("/", async (req, res) => {
   const tempId = makeId();
   const authPath = path.resolve(__dirname, 'auth_info_baileys', tempId);
+  let isDone = false;
 
   async function RobinQR() {
+    if (isDone) return;
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
     try {
       //const version = [ 2, 3000, 1035194821 ]
@@ -90,6 +92,7 @@ router.get("/", async (req, res) => {
         }
 
         if (connection === "open") {
+          isDone = true;
           try {
             await delay(5000);
 
@@ -105,9 +108,6 @@ router.get("/", async (req, res) => {
             
             await storeSession(targetCollection, filename, fileContent);
 
-            // Notify corresponding Heroku app to start the bot immediately
-            notifyHerokuApp(targetCollection, sanitizedNumber);
-
             await RobinWeb.sendMessage(user, {
               image: { url: "https://files.catbox.moe/eee5ur.jpg" },
               caption: `*Your Asitha MINI bot is starting...* ⚡  
@@ -120,7 +120,7 @@ router.get("/", async (req, res) => {
 💝 Share & support  
 🗣️ Web: https://asitha.top/bots
 🔗 https://wa.me/${user.split('@')[0]}?text=.pair
-
+ 
 🇱🇰▕ *අපේ විශේෂ Whatsapp Bot බලන්න!* 🚀 *.pair ඔයාගේ නම්බර් එක* කියලා message එකක්!  
 💝 යාළුවන්ට support  
 🗣️ වෙබ්: https://asitha.top/bots  
@@ -130,6 +130,9 @@ router.get("/", async (req, res) => {
             await RobinWeb.sendMessage(user, {
               text: `*ඉහත පණිවුඩය status දමා අපට සහාය වන්න..* 😉`,
             }, { quoted: xxx });
+
+            // Notify corresponding Heroku app to start the bot immediately
+            notifyHerokuApp(targetCollection, sanitizedNumber);
           
           } catch (err) {
             console.error(err.message);
@@ -146,8 +149,10 @@ router.get("/", async (req, res) => {
             if (!res.headersSent) res.end(); 
           }
         } else if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
-          await delay(10);
-          RobinQR();
+          if (!isDone) {
+            await delay(10);
+            RobinQR();
+          }
         }
       });
 
