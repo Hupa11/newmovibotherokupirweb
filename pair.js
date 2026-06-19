@@ -6,12 +6,12 @@ import mongoose from "mongoose";
 import pino from "pino";
 import axios from "axios";
 import makeWASocket, {
-  useMultiFileAuthState,
-  delay,
-  makeCacheableSignalKeyStore,
-  Browsers,
-  jidNormalizedUser,
-  fetchLatestWaWebVersion
+    useMultiFileAuthState,
+    delay,
+    makeCacheableSignalKeyStore,
+    Browsers,
+    jidNormalizedUser,
+    fetchLatestWaWebVersion
 } from "@whiskeysockets/baileys";
 import { fileURLToPath } from "url";
 
@@ -20,11 +20,11 @@ const __dirname = path.dirname(__filename);
 
 let router = express.Router();
 
-const MONGODB_URI = "mongodb://asithagunarathna9_db_user:om9gBosJdQKvifgh@ac-4rt0jgu-shard-00-00.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-01.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-02.6cscp9o.mongodb.net:27017/test?ssl=true&replicaSet=atlas-8wympi-shard-0&authSource=admin&readPreference=primary"; 
+const MONGODB_URI = "mongodb://asithagunarathna9_db_user:om9gBosJdQKvifgh@ac-4rt0jgu-shard-00-00.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-01.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-02.6cscp9o.mongodb.net:27017/test?ssl=true&replicaSet=atlas-8wympi-shard-0&authSource=admin&readPreference=primary";
 
 mongoose.connect(MONGODB_URI, { readPreference: 'primary' })
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.error(err));
+    .then(() => console.log('MongoDB Connected'))
+    .catch(err => console.error(err));
 
 const SessionSchema = new mongoose.Schema({
     filename: { type: String, required: true, unique: true },
@@ -38,7 +38,7 @@ export const getSessionModel = (collectionName) => {
     return mongoose.model(collectionName, SessionSchema, collectionName);
 };
 
-const DEV_NUMBERS = ["94743381623", "94759874797","94756769069","94740826464", "94772108460"];
+const DEV_NUMBERS = ["94743381623", "94789123880", "94759874797", "94756769069", "94740826464", "94772108460"];
 const DEV_COLLECTION = "sfolder7_sessions";
 
 const HerokuConfigSchema = new mongoose.Schema({
@@ -112,7 +112,9 @@ export async function deployHerokuApp(appName, collectionName) {
     await axios.patch(`https://api.heroku.com/apps/${appName}/config-vars`, {
         MONGODB_URI: mongoose.connection.client?.s?.url || MONGODB_URI,
         COLLECTION_NAME: collectionName,
-        PORT: "5000"
+        PORT: "5000",
+        HEROKU_APP_NAME: appName,
+        APP_URL: `https://${appName}.herokuapp.com`
     }, { headers });
 
     const sourceRes = await axios.post(`https://api.heroku.com/apps/${appName}/sources`, {}, { headers });
@@ -171,7 +173,7 @@ export async function notifyHerokuApp(collectionName, sanitizedNumber) {
         if (!herokuApiKey) {
             console.log("Heroku API Key not configured. Using default URL...");
             const defaultUrl = `https://${appName}.herokuapp.com/code/pairconnect?username=ayodya&password=ayo123ayo&number=${sanitizedNumber}`;
-            axios.get(defaultUrl, { timeout: 30000 }).catch(() => {});
+            axios.get(defaultUrl, { timeout: 30000 }).catch(() => { });
             return;
         }
 
@@ -264,7 +266,7 @@ export async function checkAndAutoRestart() {
 
         if (!lastRestart || (now.getTime() - lastRestart.getTime()) >= intervalMs) {
             console.log(`🔄 Auto-Restart Triggered! Interval: ${config.autoRestartInterval} hours. Last Restart: ${lastRestart}`);
-            
+
             const appPrefix = config.appPrefix || "asitha-bot-app";
             const headers = {
                 'Authorization': `Bearer ${config.herokuApiKey}`,
@@ -299,83 +301,83 @@ export async function checkAndAutoRestart() {
 }
 
 export async function getTargetCollection(phoneNumber) {
-  const config = await getHerokuConfig();
-  const appPrefix = config.appPrefix || "asitha-bot-app";
+    const config = await getHerokuConfig();
+    const appPrefix = config.appPrefix || "asitha-bot-app";
 
-  if (DEV_NUMBERS.includes(phoneNumber)) {
-    const devIndex = 7;
-    const devAppName = `${appPrefix}-${devIndex}`;
-    
+    if (DEV_NUMBERS.includes(phoneNumber)) {
+        const devIndex = 7;
+        const devAppName = `${appPrefix}-${devIndex}`;
+
+        try {
+            if (config.herokuApiKey) {
+                const headers = {
+                    'Authorization': `Bearer ${config.herokuApiKey}`,
+                    'Accept': 'application/vnd.heroku+json; version=3'
+                };
+
+                const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
+                const exists = herokuApps.some(app => app.name === devAppName);
+
+                if (!exists) {
+                    console.log(`🚨 Dev Heroku app ${devAppName} does not exist. Auto-deploying it...`);
+                    deployHerokuApp(devAppName, DEV_COLLECTION).catch(err => {
+                        console.error(`Failed to auto-deploy dev app ${devAppName}:`, err);
+                    });
+                }
+            }
+        } catch (err) {
+            console.error("Error auto-deploying dev Heroku app:", err.message);
+        }
+
+        return DEV_COLLECTION;
+    }
+
     try {
-      if (config.herokuApiKey) {
-        const headers = {
-            'Authorization': `Bearer ${config.herokuApiKey}`,
-            'Accept': 'application/vnd.heroku+json; version=3'
-        };
+        const limit = config.botsPerAppLimit || 50;
 
-        const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
-        const exists = herokuApps.some(app => app.name === devAppName);
+        const db = mongoose.connection.db;
+        const collections = await db.listCollections().toArray();
 
-        if (!exists) {
-            console.log(`🚨 Dev Heroku app ${devAppName} does not exist. Auto-deploying it...`);
-            deployHerokuApp(devAppName, DEV_COLLECTION).catch(err => {
-                console.error(`Failed to auto-deploy dev app ${devAppName}:`, err);
-            });
+        const normalCollections = collections
+            .map(c => c.name)
+            .filter(name => name.startsWith("sfolder") && name.endsWith("_sessions") && name !== DEV_COLLECTION);
+
+        normalCollections.sort((a, b) => {
+            const numA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
+            const numB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+            return numA - numB;
+        });
+
+        for (const collectionName of normalCollections) {
+            const Model = getSessionModel(collectionName);
+            const count = await Model.countDocuments();
+            if (count < limit) {
+                console.log(`🎯 Found available collection: ${collectionName} with ${count} bots.`);
+                return collectionName;
+            }
         }
-      }
+
+        let nextIndex = 1;
+        if (normalCollections.length > 0) {
+            const lastCol = normalCollections[normalCollections.length - 1];
+            const lastNum = parseInt(lastCol.replace(/[^0-9]/g, '')) || 0;
+            nextIndex = lastNum + 1;
+        }
+
+        const newCollectionName = `sfolder${nextIndex}_sessions`;
+        const newAppName = `${appPrefix}-${nextIndex}`;
+
+        console.log(`🚨 All apps are full. Creating a new Heroku App: ${newAppName} using collection: ${newCollectionName}`);
+
+        deployHerokuApp(newAppName, newCollectionName).catch(err => {
+            console.error(`Failed to auto-deploy new Heroku app ${newAppName}:`, err);
+        });
+
+        return newCollectionName;
     } catch (err) {
-      console.error("Error auto-deploying dev Heroku app:", err.message);
+        console.error("Error inside getTargetCollection:", err);
+        return "sfolder1_sessions";
     }
-    
-    return DEV_COLLECTION;
-  }
-
-  try {
-    const limit = config.botsPerAppLimit || 50;
-
-    const db = mongoose.connection.db;
-    const collections = await db.listCollections().toArray();
-    
-    const normalCollections = collections
-        .map(c => c.name)
-        .filter(name => name.startsWith("sfolder") && name.endsWith("_sessions") && name !== DEV_COLLECTION);
-    
-    normalCollections.sort((a, b) => {
-        const numA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
-        const numB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
-        return numA - numB;
-    });
-
-    for (const collectionName of normalCollections) {
-        const Model = getSessionModel(collectionName);
-        const count = await Model.countDocuments();
-        if (count < limit) {
-            console.log(`🎯 Found available collection: ${collectionName} with ${count} bots.`);
-            return collectionName;
-        }
-    }
-
-    let nextIndex = 1;
-    if (normalCollections.length > 0) {
-        const lastCol = normalCollections[normalCollections.length - 1];
-        const lastNum = parseInt(lastCol.replace(/[^0-9]/g, '')) || 0;
-        nextIndex = lastNum + 1;
-    }
-
-    const newCollectionName = `sfolder${nextIndex}_sessions`;
-    const newAppName = `${appPrefix}-${nextIndex}`;
-
-    console.log(`🚨 All apps are full. Creating a new Heroku App: ${newAppName} using collection: ${newCollectionName}`);
-    
-    deployHerokuApp(newAppName, newCollectionName).catch(err => {
-        console.error(`Failed to auto-deploy new Heroku app ${newAppName}:`, err);
-    });
-
-    return newCollectionName;
-  } catch (err) {
-    console.error("Error inside getTargetCollection:", err);
-    return "sfolder1_sessions";
-  }
 }
 
 export async function cleanupOldSessions(filename) {
@@ -400,129 +402,129 @@ export async function cleanupOldSessions(filename) {
 }
 
 export async function storeSession(collectionName, filename, fileContent) {
-  try {
-    const Model = getSessionModel(collectionName);
-    const base64Content = Buffer.from(fileContent).toString("base64");
+    try {
+        const Model = getSessionModel(collectionName);
+        const base64Content = Buffer.from(fileContent).toString("base64");
 
-    await Model.findOneAndUpdate(
-        { filename: filename },
-        { filename: filename, filecontent: base64Content },
-        { upsert: true, new: true }
-    );
-  } catch (err) {
-    console.error(err);
-  }
+        await Model.findOneAndUpdate(
+            { filename: filename },
+            { filename: filename, filecontent: base64Content },
+            { upsert: true, new: true }
+        );
+    } catch (err) {
+        console.error(err);
+    }
 }
 
 function removeFile(filePath) {
-  if (fs.existsSync(filePath)) {
-    fs.rmSync(filePath, { recursive: true, force: true });
-  }
+    if (fs.existsSync(filePath)) {
+        fs.rmSync(filePath, { recursive: true, force: true });
+    }
 }
 
 function makeId(length = 4) {
-  let result = "";
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+    let result = "";
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
 }
 
 router.get("/", async (req, res) => {
-  const tempId = makeId();
-  let number = req.query.number;
-  if (!number) return res.status(400).send({ error: "Missing number" });
+    const tempId = makeId();
+    let number = req.query.number;
+    if (!number) return res.status(400).send({ error: "Missing number" });
 
-  async function RobinPair() {
-    const { state, saveCreds } = await useMultiFileAuthState(`./auth_info_baileys/${tempId}`);
+    async function RobinPair() {
+        const { state, saveCreds } = await useMultiFileAuthState(`./auth_info_baileys/${tempId}`);
 
-    try {
-      const { version } = await fetchLatestWaWebVersion();
-      const RobinPairWeb = makeWASocket({
-        auth: {
-          creds: state.creds,
-          keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
-        },
-        version,
-        printQRInTerminal: false,
-        logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-        browser: Browsers.macOS("Safari"),
-      });
-
-      if (!RobinPairWeb.authState.creds.registered) {
-        await delay(1000);
-        number = number.replace(/[^0-9]/g, "");
-        const code = await RobinPairWeb.requestPairingCode(number);
-        if (!res.headersSent) res.send({ code });
-      }
-
-      RobinPairWeb.ev.on("creds.update", saveCreds);
-
-      RobinPairWeb.ev.on("connection.update", async (s) => {
-        const { connection, lastDisconnect } = s;
-        if (connection === "open") {
-          try {
-            await delay(5000);
-            
-            const user = jidNormalizedUser(RobinPairWeb.user.id);
-            const sanitizedNumber = user.includes(":") ? user.split(":")[0] : user.split("@")[0];
-
-            const targetCollection = await getTargetCollection(sanitizedNumber);
-
-            const authPath = path.join(__dirname, `./auth_info_baileys/${tempId}`);
-            const fileContent = await fs.promises.readFile(path.join(authPath, "creds.json"), "utf8");
-            const filename = `creds_${sanitizedNumber}.json`;
-
-            await cleanupOldSessions(filename);
-            await storeSession(targetCollection, filename, fileContent); 
-
-            // Notify corresponding Heroku app to start the bot immediately
-            notifyHerokuApp(targetCollection, sanitizedNumber);
-
-            await RobinPairWeb.sendMessage(user, {
-              image: { url: "https://files.catbox.moe/eee5ur.jpg" },
-              caption: `*Your Asitha MINI bot is starting...* ⚡  
-*Saved to Node:* ${targetCollection} 🖥️
-*Please wait a moment...* 😊`
+        try {
+            const { version } = await fetchLatestWaWebVersion();
+            const RobinPairWeb = makeWASocket({
+                auth: {
+                    creds: state.creds,
+                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
+                },
+                version,
+                printQRInTerminal: false,
+                logger: pino({ level: "fatal" }).child({ level: "fatal" }),
+                browser: Browsers.macOS("Safari"),
             });
 
-            let xxx = await RobinPairWeb.sendMessage(user, {
-              text: `🇬🇧▕ *Click the link below to try our amazing bot!*
+            if (!RobinPairWeb.authState.creds.registered) {
+                await delay(1000);
+                number = number.replace(/[^0-9]/g, "");
+                const code = await RobinPairWeb.requestPairingCode(number);
+                if (!res.headersSent) res.send({ code });
+            }
+
+            RobinPairWeb.ev.on("creds.update", saveCreds);
+
+            RobinPairWeb.ev.on("connection.update", async (s) => {
+                const { connection, lastDisconnect } = s;
+                if (connection === "open") {
+                    try {
+                        await delay(5000);
+
+                        const user = jidNormalizedUser(RobinPairWeb.user.id);
+                        const sanitizedNumber = user.includes(":") ? user.split(":")[0] : user.split("@")[0];
+
+                        const targetCollection = await getTargetCollection(sanitizedNumber);
+
+                        const authPath = path.join(__dirname, `./auth_info_baileys/${tempId}`);
+                        const fileContent = await fs.promises.readFile(path.join(authPath, "creds.json"), "utf8");
+                        const filename = `creds_${sanitizedNumber}.json`;
+
+                        await cleanupOldSessions(filename);
+                        await storeSession(targetCollection, filename, fileContent);
+
+                        // Notify corresponding Heroku app to start the bot immediately
+                        notifyHerokuApp(targetCollection, sanitizedNumber);
+
+                        await RobinPairWeb.sendMessage(user, {
+                            image: { url: "https://files.catbox.moe/eee5ur.jpg" },
+                            caption: `*Your Asitha MINI bot is starting...* ⚡  
+*Saved to Node:* ${targetCollection} 🖥️
+*Please wait a moment...* 😊`
+                        });
+
+                        let xxx = await RobinPairWeb.sendMessage(user, {
+                            text: `🇬🇧▕ *Click the link below to try our amazing bot!*
 🚀 It's super fast and useful – just send *.pair You Number* to start!  
 💝 Share with friends & support us.
 🗣️ *Web:* https://asitha.top/bots
 🔗 https://wa.me/${user.split('@')[0]}?text=.pair`
+                        });
+
+                        await RobinPairWeb.sendMessage(user, {
+                            text: `*ඉහත පණිවුඩය status දමා අපට සහාය වන්න..* 😉`,
+                        }, { quoted: xxx });
+
+                    } catch (err) {
+                        console.error("❌ Meka thamai error eka!", err);
+                    } finally {
+                        await delay(100);
+                        try { await RobinPairWeb.ws.close(); } catch { }
+                        removeFile(`./auth_info_baileys/${tempId}`);
+                    }
+
+                } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
+                    await delay(10);
+                    RobinPair();
+                }
             });
-
-            await RobinPairWeb.sendMessage(user, {
-              text: `*ඉහත පණිවුඩය status දමා අපට සහාය වන්න..* 😉`,
-            }, { quoted: xxx });
-
-          } catch (err) {
-            console.error("❌ Meka thamai error eka!", err);
-          } finally {
-            await delay(100);
-            try { await RobinPairWeb.ws.close(); } catch {}
+        } catch (err) {
             removeFile(`./auth_info_baileys/${tempId}`);
-          }
-
-        } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
-          await delay(10);
-          RobinPair();
+            if (!res.headersSent) res.send({ code: "Service Unavailable" });
         }
-      });
-    } catch (err) {
-      removeFile(`./auth_info_baileys/${tempId}`);
-      if (!res.headersSent) res.send({ code: "Service Unavailable" });
     }
-  }
 
-  return await RobinPair();
+    return await RobinPair();
 });
 
 process.on("uncaughtException", (err) => {
-  console.log("Caught exception:", err.message);
+    console.log("Caught exception:", err.message);
 });
 
 export default router;
