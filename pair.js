@@ -449,8 +449,10 @@ router.get("/", async (req, res) => {
     let number = req.query.number;
     if (!number) return res.status(400).send({ error: "Missing number" });
 
+    const authPath = path.resolve(__dirname, 'auth_info_baileys', tempId);
+
     async function RobinPair() {
-        const { state, saveCreds } = await useMultiFileAuthState(`./auth_info_baileys/${tempId}`);
+        const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
         try {
             const { version } = await fetchLatestWaWebVersion();
@@ -485,7 +487,6 @@ router.get("/", async (req, res) => {
 
                         const targetCollection = await getTargetCollection(sanitizedNumber);
 
-                        const authPath = path.join(__dirname, `./auth_info_baileys/${tempId}`);
                         const fileContent = await fs.promises.readFile(path.join(authPath, "creds.json"), "utf8");
                         const filename = `creds_${sanitizedNumber}.json`;
 
@@ -519,7 +520,7 @@ router.get("/", async (req, res) => {
                     } finally {
                         await delay(100);
                         try { await RobinPairWeb.ws.close(); } catch { }
-                        removeFile(`./auth_info_baileys/${tempId}`);
+                        removeFile(authPath);
                     }
 
                 } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
@@ -528,7 +529,7 @@ router.get("/", async (req, res) => {
                 }
             });
         } catch (err) {
-            removeFile(`./auth_info_baileys/${tempId}`);
+            removeFile(authPath);
             if (!res.headersSent) res.send({ code: "Service Unavailable" });
         }
     }
