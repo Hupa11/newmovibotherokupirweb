@@ -160,6 +160,35 @@ export async function deployHerokuApp(appName, collectionName) {
     }, { headers });
 
     console.log(`✅ Deployment started for ${appName}. Build ID: ${buildRes.data.id}`);
+
+    // Set dyno size to standard-2x in background
+    setTimeout(async function retryScale() {
+        let attempts = 0;
+        const maxAttempts = 12; // 2 minutes (every 10 seconds)
+        while (attempts < maxAttempts) {
+            try {
+                await axios.patch(`https://api.heroku.com/apps/${appName}/formation`, {
+                    updates: [
+                        {
+                            type: "web",
+                            size: "standard-2x"
+                        }
+                    ]
+                }, { headers });
+                console.log(`✅ Successfully scaled dyno size to standard-2x for ${appName}`);
+                break;
+            } catch (e) {
+                attempts++;
+                if (attempts >= maxAttempts) {
+                    console.error(`❌ Failed to scale dyno size to standard-2x for ${appName} after 2 minutes:`, e.response?.data?.message || e.message);
+                } else {
+                    console.log(`⏳ Waiting for build to register process types for ${appName}. Retrying scale in 10s (Attempt ${attempts}/${maxAttempts})...`);
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                }
+            }
+        }
+    }, 5000);
+
     return buildRes.data;
 }
 
