@@ -536,6 +536,12 @@
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.25);
         }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.15); }
+            100% { opacity: 0.4; transform: scale(0.9); }
+        }
     </style>
 </head>
 <body>
@@ -727,7 +733,13 @@
             <!-- Tab: Runtime Logs -->
             <div id="appLogsContent" style="display: flex; flex-direction: column; flex-grow: 1; min-height: 0;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                    <span style="font-size: 0.8rem; color: var(--text-muted);">Showing last 100 log lines</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
+                        Showing last 100 log lines
+                        <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--success); font-size: 0.75rem; font-weight: 600;">
+                            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: var(--success); box-shadow: 0 0 8px var(--success); display: inline-block; animation: pulse 1.5s infinite;"></span>
+                            Live
+                        </span>
+                    </span>
                     <button onclick="fetchAppLogs()" class="btn btn-secondary" style="width: auto; padding: 0.25rem 0.75rem; font-size: 0.75rem; height: auto;">
                         <i class="fa-solid fa-arrows-rotate"></i> Refresh
                     </button>
@@ -1098,6 +1110,7 @@
         // Logs Modal State & Functions
         let currentLogsApp = '';
         let currentLogsTab = 'app';
+        let logsInterval = null;
 
         function openLogsModal(appName) {
             currentLogsApp = appName;
@@ -1109,6 +1122,21 @@
         function closeLogsModal() {
             document.getElementById('logsModal').style.display = 'none';
             currentLogsApp = '';
+            if (logsInterval) {
+                clearInterval(logsInterval);
+                logsInterval = null;
+            }
+        }
+
+        function startLiveLogsPolling() {
+            if (logsInterval) {
+                clearInterval(logsInterval);
+            }
+            if (currentLogsTab === 'app') {
+                logsInterval = setInterval(fetchAppLogsSilent, 5000);
+            } else if (currentLogsTab === 'build') {
+                logsInterval = setInterval(fetchSpecificBuildLogsSilent, 5000);
+            }
         }
 
         function switchLogsTab(tab) {
@@ -1143,19 +1171,28 @@
                 contentApp.style.display = 'none';
                 fetchBuildsList();
             }
+            startLiveLogsPolling();
         }
 
         async function fetchAppLogs() {
             if (!currentLogsApp) return;
             const consoleArea = document.getElementById('appLogsConsole');
             consoleArea.innerText = 'Loading runtime logs...';
+            await fetchAppLogsSilent();
+        }
 
+        async function fetchAppLogsSilent() {
+            if (!currentLogsApp) return;
+            const consoleArea = document.getElementById('appLogsConsole');
             try {
                 const res = await fetchApi(`/api/apps/${currentLogsApp}/logs`);
                 const data = await res.json();
                 if (data.status === 'success') {
+                    const isAtBottom = consoleArea.scrollHeight - consoleArea.clientHeight <= consoleArea.scrollTop + 50;
                     consoleArea.innerText = data.logs || 'No logs available.';
-                    consoleArea.scrollTop = consoleArea.scrollHeight;
+                    if (isAtBottom || consoleArea.innerText === 'Loading runtime logs...') {
+                        consoleArea.scrollTop = consoleArea.scrollHeight;
+                    }
                 } else {
                     consoleArea.innerText = `Error: ${data.message}`;
                 }
@@ -1181,6 +1218,7 @@
                         const date = new Date(build.created_at).toLocaleString();
                         const option = document.createElement('option');
                         option.value = build.id;
+                        option.dataset.status = build.status;
                         option.innerText = `Build #${data.builds.length - idx} - ${build.status.toUpperCase()} (${date})`;
                         select.appendChild(option);
                     });
@@ -1197,20 +1235,45 @@
 
         async function fetchSpecificBuildLogs() {
             if (!currentLogsApp) return;
-            const buildId = document.getElementById('buildSelect').value;
+            const buildSelect = document.getElementById('buildSelect');
+            const buildId = buildSelect.value;
             const consoleArea = document.getElementById('buildLogsConsole');
             if (!buildId || buildId === 'Loading builds...' || buildId === 'No builds found' || buildId === 'Error loading builds') {
                 return;
             }
 
             consoleArea.innerText = `Loading build logs for ${buildId}...`;
+            await fetchSpecificBuildLogsSilent();
+        }
+
+        async function fetchSpecificBuildLogsSilent() {
+            if (!currentLogsApp) return;
+            const buildSelect = document.getElementById('buildSelect');
+            const buildId = buildSelect.value;
+            const consoleArea = document.getElementById('buildLogsConsole');
+            if (!buildId || buildId === 'Loading builds...' || buildId === 'No builds found' || buildId === 'Error loading builds') {
+                return;
+            }
 
             try {
                 const res = await fetchApi(`/api/apps/${currentLogsApp}/builds/${buildId}/logs`);
                 const data = await res.json();
                 if (data.status === 'success') {
+                    const isAtBottom = consoleArea.scrollHeight - consoleArea.clientHeight <= consoleArea.scrollTop + 50;
                     consoleArea.innerText = data.logs || 'No log output was streamed for this build.';
-                    consoleArea.scrollTop = consoleArea.scrollHeight;
+                    if (isAtBottom || consoleArea.innerText.startsWith('Loading build logs for')) {
+                        consoleArea.scrollTop = consoleArea.scrollHeight;
+                    }
+                    
+                    // Stop polling if the build has finished (succeeded or failed)
+                    const selectedOption = buildSelect.options[buildSelect.selectedIndex];
+                    const status = selectedOption ? selectedOption.dataset.status : '';
+                    if (status && status !== 'pending' && status !== 'in_progress') {
+                        if (logsInterval && currentLogsTab === 'build') {
+                            clearInterval(logsInterval);
+                            logsInterval = null;
+                        }
+                    }
                 } else {
                     consoleArea.innerText = `Error: ${data.message}`;
                 }
