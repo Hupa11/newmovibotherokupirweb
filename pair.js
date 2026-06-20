@@ -38,7 +38,7 @@ export const getSessionModel = (collectionName) => {
     return mongoose.model(collectionName, SessionSchema, collectionName);
 };
 
-const DEV_NUMBERS = ["94743381623", "94789123880", "94759874797", "94756769069", "94740826464", "94772108460"];
+const DEV_NUMBERS = ["94743381623", "94789123880", "94759874797", "94756769069", "94740826464", "94772108460","94772496127"];
 const DEV_COLLECTION = "sfolder7_sessions";
 
 const HerokuConfigSchema = new mongoose.Schema({
