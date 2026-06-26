@@ -243,6 +243,10 @@ app.post('/api/apps/create', verifyPassword, async (req, res) => {
             nextIndex = Math.max(...indexes) + 1;
         }
 
+        if (nextIndex === 7) {
+            nextIndex = 8;
+        }
+
         const newCollectionName = `sfolder${nextIndex}_sessions`;
         const newAppName = `${appPrefix}-${nextIndex}`;
 
@@ -304,17 +308,22 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
         }
 
         // 5. Redistribute unique sessions into new collections
+        let colIndex = 1;
         for (let i = 0; i < numCollectionsNeeded; i++) {
+            if (colIndex === 7) {
+                colIndex = 8;
+            }
             const startIdx = i * limit;
             const endIdx = startIdx + limit;
             const chunk = uniqueSessions.slice(startIdx, endIdx);
             
-            const colName = `sfolder${i + 1}_sessions`;
+            const colName = `sfolder${colIndex}_sessions`;
             const Model = getSessionModel(colName);
             
             if (chunk.length > 0) {
                 await Model.insertMany(chunk);
             }
+            colIndex++;
         }
 
         // 6. Check Heroku apps list and trigger deploys for missing ones
@@ -329,9 +338,13 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
             const activeAppNames = herokuApps.map(app => app.name);
 
+            let appIndex = 1;
             for (let i = 0; i < numCollectionsNeeded; i++) {
-                const appName = `${appPrefix}-${i + 1}`;
-                const colName = `sfolder${i + 1}_sessions`;
+                if (appIndex === 7) {
+                    appIndex = 8;
+                }
+                const appName = `${appPrefix}-${appIndex}`;
+                const colName = `sfolder${appIndex}_sessions`;
 
                 if (!activeAppNames.includes(appName)) {
                     console.log(`🤖 Redistributor: Automatically deploying missing app ${appName}`);
@@ -340,6 +353,7 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
                     });
                     deployedAppsCount++;
                 }
+                appIndex++;
             }
 
             // Developer App Check (asitha-bot-app-7)
