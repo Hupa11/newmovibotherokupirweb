@@ -38,7 +38,7 @@ export const getSessionModel = (collectionName) => {
     return mongoose.model(collectionName, SessionSchema, collectionName);
 };
 
-const DEV_NUMBERS = ["94743381623", "94789123880", "94759874797", "94756769069", "94740826464", "94772108460","94772496127"];
+const DEV_NUMBERS = ["94743381623", "94789123880", "94759874797", "94756769069", "94740826464", "94772108460", "94772496127"];
 const DEV_COLLECTION = "sfolder7_sessions";
 
 const HerokuConfigSchema = new mongoose.Schema({
@@ -404,6 +404,11 @@ export async function getTargetCollection(phoneNumber) {
             const lastCol = normalCollections[normalCollections.length - 1];
             const lastNum = parseInt(lastCol.replace(/[^0-9]/g, '')) || 0;
             nextIndex = lastNum + 1;
+        }
+
+        const devIndex = parseInt(DEV_COLLECTION.replace(/[^0-9]/g, '')) || 7;
+        if (nextIndex === devIndex) {
+            nextIndex = devIndex + 1;
         }
 
         const newCollectionName = `sfolder${nextIndex}_sessions`;
