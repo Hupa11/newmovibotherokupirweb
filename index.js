@@ -267,13 +267,15 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
         const collections = await db.listCollections().toArray();
         
         const DEV_COLLECTION = "sfolder7_sessions";
-        const sessionCollections = collections
+        const DEV_NUMBERS = ["94743381623", "94789123880", "94759874797", "94756769069", "94740826464", "94772108460", "94772496127"];
+
+        const allCollections = collections
             .map(c => c.name)
-            .filter(name => name.startsWith("sfolder") && name.endsWith("_sessions") && name !== DEV_COLLECTION);
+            .filter(name => name.startsWith("sfolder") && name.endsWith("_sessions"));
 
         // 1. Fetch all session documents from all collections
         const allSessions = [];
-                for (const colName of sessionCollections) {
+        for (const colName of allCollections) {
             const Model = getSessionModel(colName);
             const docs = await Model.find({}).read('primary');
             docs.forEach(doc => {
@@ -290,16 +292,23 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             uniqueMap.set(session.filename, session.filecontent);
         });
 
-        const uniqueSessions = [];
+        // 3. Separate dev sessions from normal sessions
+        const devSessions = [];
+        const normalSessions = [];
+
         uniqueMap.forEach((filecontent, filename) => {
-            uniqueSessions.push({ filename, filecontent });
+            const match = filename.match(/^creds_(\d+)\.json$/);
+            const phoneNumber = match ? match[1] : "";
+            
+            if (DEV_NUMBERS.includes(phoneNumber)) {
+                devSessions.push({ filename, filecontent });
+            } else {
+                normalSessions.push({ filename, filecontent });
+            }
         });
 
-        // 3. Re-calculate number of collections needed
-        const numCollectionsNeeded = Math.max(1, Math.ceil(uniqueSessions.length / limit));
-
         // 4. Drop all existing session collections
-        for (const colName of sessionCollections) {
+        for (const colName of allCollections) {
             try {
                 await db.dropCollection(colName);
             } catch (dropErr) {
@@ -307,7 +316,16 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             }
         }
 
-        // 5. Redistribute unique sessions into new collections
+        // 5. Restore Dev Sessions back to sfolder7_sessions
+        if (devSessions.length > 0) {
+            const DevModel = getSessionModel(DEV_COLLECTION);
+            await DevModel.insertMany(devSessions);
+        }
+
+        // 6. Re-calculate number of collections needed for normal sessions
+        const numCollectionsNeeded = Math.max(1, Math.ceil(normalSessions.length / limit));
+
+        // 7. Redistribute normal sessions into new collections
         let colIndex = 1;
         for (let i = 0; i < numCollectionsNeeded; i++) {
             if (colIndex === 7) {
@@ -315,7 +333,7 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             }
             const startIdx = i * limit;
             const endIdx = startIdx + limit;
-            const chunk = uniqueSessions.slice(startIdx, endIdx);
+            const chunk = normalSessions.slice(startIdx, endIdx);
             
             const colName = `sfolder${colIndex}_sessions`;
             const Model = getSessionModel(colName);
