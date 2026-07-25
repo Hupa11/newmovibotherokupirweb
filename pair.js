@@ -46,7 +46,7 @@ const HerokuConfigSchema = new mongoose.Schema({
     githubToken: { type: String, default: "" },
     githubRepo: { type: String, default: "nbbb15092/Pair" },
     githubBranch: { type: String, default: "main" },
-    botsPerAppLimit: { type: Number, default: 50 },
+    botsPerAppLimit: { type: Number, default: 30 },
     appPrefix: { type: String, default: "asitha-bot-app" },
     devGithubRepo: { type: String, default: "" },
     devGithubBranch: { type: String, default: "" },
