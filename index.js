@@ -346,6 +346,7 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             const col = db.collection(colName);
 
             if (chunk.length > 0) {
+                await col.deleteMany({});
                 const ops = chunk.map(s => ({
                     updateOne: {
                         filter: { filename: s.filename },
@@ -358,7 +359,7 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             colIndex++;
         }
 
-        // 6. Check Heroku apps list and trigger deploys for missing ones
+        // 6. Check Heroku apps list and trigger deploys/re-deploys for all active collections
         let deployedAppsCount = 0;
         if (config.herokuApiKey) {
             const appPrefix = config.appPrefix || "asitha-bot-app";
@@ -378,23 +379,21 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
                 const appName = `${appPrefix}-${appIndex}`;
                 const colName = `sfolder${appIndex}_sessions`;
 
-                if (!activeAppNames.includes(appName)) {
-                    console.log(`🤖 Redistributor: Automatically deploying missing app ${appName}`);
-                    deployHerokuApp(appName, colName).catch(err => {
-                        console.error(`Failed to auto-deploy app ${appName} during redistribution:`, err.message);
-                    });
-                    deployedAppsCount++;
-                }
+                console.log(`🤖 Redistributor: Deploying/Redeploying app ${appName} for ${colName}...`);
+                deployHerokuApp(appName, colName).catch(err => {
+                    console.error(`Failed to deploy/redeploy app ${appName} during redistribution:`, err.message);
+                });
+                deployedAppsCount++;
                 appIndex++;
             }
 
-            // Developer App Check (asitha-bot-app-7)
-            const devAppName = `${appPrefix}-7`;
-            const devColName = "sfolder7_sessions";
-            if (!activeAppNames.includes(devAppName)) {
-                console.log(`🤖 Redistributor: Automatically deploying missing developer app ${devAppName}`);
+            // Developer App Check (sfolder7_sessions) only if dev sessions exist
+            if (devSessions.length > 0) {
+                const devAppName = `${appPrefix}-7`;
+                const devColName = "sfolder7_sessions";
+                console.log(`🤖 Redistributor: Deploying developer app ${devAppName}...`);
                 deployHerokuApp(devAppName, devColName).catch(err => {
-                    console.error(`Failed to auto-deploy developer app ${devAppName} during redistribution:`, err.message);
+                    console.error(`Failed to deploy developer app ${devAppName} during redistribution:`, err.message);
                 });
                 deployedAppsCount++;
             }
