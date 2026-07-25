@@ -307,10 +307,18 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             }
         });
 
-        // 4. Safely clear old data and write Dev Sessions back to sfolder7_sessions
+        // 4. Clear ALL existing sfolder collections first so no leftover collections retain duplicate sessions
+        for (const colName of allCollections) {
+            try {
+                await db.collection(colName).deleteMany({});
+            } catch (clearErr) {
+                console.error(`Error clearing collection ${colName}:`, clearErr.message);
+            }
+        }
+
+        // 5. Restore Dev Sessions back to sfolder7_sessions
         if (devSessions.length > 0) {
             const devCol = db.collection(DEV_COLLECTION);
-            await devCol.deleteMany({});
             const devOps = devSessions.map(s => ({
                 updateOne: {
                     filter: { filename: s.filename },
@@ -321,10 +329,10 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             await devCol.bulkWrite(devOps);
         }
 
-        // 5. Re-calculate number of collections needed for normal sessions
+        // 6. Re-calculate number of collections needed for normal sessions
         const numCollectionsNeeded = Math.max(1, Math.ceil(normalSessions.length / limit));
 
-        // 6. Safely redistribute normal sessions into collections using upserts
+        // 7. Redistribute normal sessions into collections using upserts
         let colIndex = 1;
         for (let i = 0; i < numCollectionsNeeded; i++) {
             if (colIndex === 7) {
@@ -338,7 +346,6 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             const col = db.collection(colName);
 
             if (chunk.length > 0) {
-                await col.deleteMany({});
                 const ops = chunk.map(s => ({
                     updateOne: {
                         filter: { filename: s.filename },
