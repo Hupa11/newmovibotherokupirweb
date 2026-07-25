@@ -146,7 +146,7 @@ app.get('/api/apps', verifyPassword, async (req, res) => {
             if (activeCollections.includes(collectionName)) {
                 try {
                     const Model = getSessionModel(collectionName);
-                    botsCount = await Model.countDocuments();
+                    botsCount = await Model.countDocuments({ filename: /^creds_.*\.json$/ });
                 } catch (e) {
                     console.error(`Error counting collection ${collectionName}:`, e);
                 }
@@ -277,7 +277,7 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
         const allSessions = [];
         for (const colName of allCollections) {
             const Model = getSessionModel(colName);
-            const docs = await Model.find({}).read('primary');
+            const docs = await Model.find({ filename: /^creds_.*\.json$/ }).read('primary');
             docs.forEach(doc => {
                 allSessions.push({
                     filename: doc.filename,
