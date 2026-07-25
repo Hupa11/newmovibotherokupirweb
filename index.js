@@ -261,7 +261,7 @@ app.post('/api/apps/create', verifyPassword, async (req, res) => {
 app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
     try {
         const config = await getHerokuConfig();
-        const limit = config.botsPerAppLimit || 50;
+        const limit = 30; // Enforce EXACTLY 30 bots max per folder
 
         const db = mongoose.connection.db;
         const collections = await db.listCollections().toArray();
