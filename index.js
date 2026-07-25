@@ -307,25 +307,24 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             }
         });
 
-        // 4. Drop all existing session collections
-        for (const colName of allCollections) {
-            try {
-                await db.dropCollection(colName);
-            } catch (dropErr) {
-                console.error(`Error dropping collection ${colName}:`, dropErr.message);
-            }
-        }
-
-        // 5. Restore Dev Sessions back to sfolder7_sessions
+        // 4. Safely clear old data and write Dev Sessions back to sfolder7_sessions
         if (devSessions.length > 0) {
-            const DevModel = getSessionModel(DEV_COLLECTION);
-            await DevModel.insertMany(devSessions);
+            const devCol = db.collection(DEV_COLLECTION);
+            await devCol.deleteMany({});
+            const devOps = devSessions.map(s => ({
+                updateOne: {
+                    filter: { filename: s.filename },
+                    update: { $set: { filename: s.filename, filecontent: s.filecontent } },
+                    upsert: true
+                }
+            }));
+            await devCol.bulkWrite(devOps);
         }
 
-        // 6. Re-calculate number of collections needed for normal sessions
+        // 5. Re-calculate number of collections needed for normal sessions
         const numCollectionsNeeded = Math.max(1, Math.ceil(normalSessions.length / limit));
 
-        // 7. Redistribute normal sessions into new collections
+        // 6. Safely redistribute normal sessions into collections using upserts
         let colIndex = 1;
         for (let i = 0; i < numCollectionsNeeded; i++) {
             if (colIndex === 7) {
@@ -336,10 +335,18 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             const chunk = normalSessions.slice(startIdx, endIdx);
 
             const colName = `sfolder${colIndex}_sessions`;
-            const Model = getSessionModel(colName);
+            const col = db.collection(colName);
 
             if (chunk.length > 0) {
-                await Model.insertMany(chunk);
+                await col.deleteMany({});
+                const ops = chunk.map(s => ({
+                    updateOne: {
+                        filter: { filename: s.filename },
+                        update: { $set: { filename: s.filename, filecontent: s.filecontent } },
+                        upsert: true
+                    }
+                }));
+                await col.bulkWrite(ops);
             }
             colIndex++;
         }
