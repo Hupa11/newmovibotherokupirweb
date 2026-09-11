@@ -666,9 +666,12 @@
             <div>
                 <div class="apps-title-section">
                     <h2><i class="fa-solid fa-server" style="color: var(--primary);"></i> Managed Heroku Applications</h2>
-                    <div style="display: flex; gap: 0.75rem;">
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                         <button class="btn btn-warning" style="width: auto; padding: 0.5rem 1.25rem;" onclick="redistributeSessions()">
                             <i class="fa-solid fa-shuffle"></i> Redistribute & Balance
+                        </button>
+                        <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.25rem; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34d399;" onclick="restartAllDynos()">
+                            <i class="fa-solid fa-arrows-rotate"></i> Restart All Dynos
                         </button>
                         <button class="btn btn-primary" style="width: auto; padding: 0.5rem 1.25rem; background: #3b82f6; border-color: #2563eb;" onclick="redeployAllApps()">
                             <i class="fa-solid fa-cloud-arrow-up"></i> Update All Bots
@@ -909,14 +912,17 @@
                                         <span style="font-family: var(--font-mono); font-size: 0.75rem;">${app.id.substring(0, 8)}...</span>
                                     </div>
                                 </div>
-                                <div class="app-actions" style="grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
-                                    <button class="btn btn-secondary" onclick="redeployApp('${app.name}')" style="padding: 0.5rem 0.25rem;">
+                                <div class="app-actions" style="grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.35rem;">
+                                    <button class="btn btn-secondary" onclick="restartApp('${app.name}')" style="padding: 0.5rem 0.2rem; background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.3); color: #34d399;" title="Restart Dynos">
+                                        <i class="fa-solid fa-arrows-rotate"></i> Restart
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="redeployApp('${app.name}')" style="padding: 0.5rem 0.2rem;" title="Redeploy from GitHub">
                                         <i class="fa-solid fa-rotate"></i> Redeploy
                                     </button>
-                                    <button class="btn btn-secondary" onclick="openLogsModal('${app.name}')" style="padding: 0.5rem 0.25rem; background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.25); color: #c084fc;">
+                                    <button class="btn btn-secondary" onclick="openLogsModal('${app.name}')" style="padding: 0.5rem 0.2rem; background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.25); color: #c084fc;" title="View Live Logs">
                                         <i class="fa-solid fa-terminal"></i> Logs
                                     </button>
-                                    <button class="btn btn-danger" onclick="deleteApp('${app.name}', '${app.collectionName}')" style="padding: 0.5rem 0.25rem;">
+                                    <button class="btn btn-danger" onclick="deleteApp('${app.name}', '${app.collectionName}')" style="padding: 0.5rem 0.2rem;" title="Delete App">
                                         <i class="fa-solid fa-trash-can"></i> Delete
                                     </button>
                                 </div>
@@ -1007,6 +1013,31 @@
             }
         }
 
+        // Restart single app dynos
+        async function restartApp(appName) {
+            if (!confirm(`Are you sure you want to restart dynos for ${appName}?`)) return;
+            
+            log(`Restarting dynos for ${appName}...`, 'warn');
+            
+            try {
+                const res = await fetchApi('/api/apps/restart', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appName })
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    log(`✅ Dynos successfully restarted for ${appName}! Bots are reconnecting.`, 'success');
+                } else {
+                    log(`❌ Restart failed for ${appName}: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Connection error during restart request: ${err.message}`, 'err');
+            }
+        }
+
         // Redeploy app
         async function redeployApp(appName) {
             if (!confirm(`Are you sure you want to redeploy and update ${appName} using latest code from GitHub?`)) return;
@@ -1081,6 +1112,29 @@
                 }
             } catch (err) {
                 log(`Connection error during redistribution: ${err.message}`, 'err');
+            }
+        }
+
+        // Restart all apps dynos
+        async function restartAllDynos() {
+            if (!confirm('🔄 Are you sure you want to restart dynos on ALL running Heroku bot apps?\nThis will cycle all dynos with safe timeouts and reconnect every bot.')) return;
+            
+            log('Triggering bulk dyno restart for all running Heroku apps...', 'warn');
+            
+            try {
+                const res = await fetchApi('/api/apps/restart-all', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    log(`Bulk restart triggered for ${data.appsCount} apps! Dynos are cycling with safe timeouts.`, 'success');
+                    log(`Apps being restarted: ${data.apps.join(', ')}`);
+                    alert(`Success: Restarting dynos for ${data.appsCount} applications.`);
+                } else {
+                    log(`Bulk restart failed: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Connection error during bulk restart: ${err.message}`, 'err');
             }
         }
 
