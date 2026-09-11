@@ -189,6 +189,94 @@ app.post('/api/apps/redeploy', verifyPassword, async (req, res) => {
         const buildData = await deployHerokuApp(appName, collectionName);
         res.status(200).json({ status: 'success', buildId: buildData.id });
     } catch (err) {
+        let msg = err.response?.data?.message || err.message;
+        if (err.response?.status === 401 || String(err.message).includes('401') || String(msg).includes('Bad credentials')) {
+            msg = "GitHub Token Expired or Invalid (401 Bad credentials). Please update GitHub Token in Dashboard Settings!";
+        }
+        res.status(500).json({ status: 'error', message: msg });
+    }
+});
+
+// POST restart single Heroku app dynos
+app.post('/api/apps/restart', verifyPassword, async (req, res) => {
+    try {
+        const { appName } = req.body;
+        if (!appName) {
+            return res.status(400).json({ status: 'error', message: 'App Name is required' });
+        }
+
+        const config = await getHerokuConfig();
+        if (!config.herokuApiKey) {
+            throw new Error("Heroku API Key is not configured in Settings!");
+        }
+
+        const headers = {
+            'Authorization': `Bearer ${config.herokuApiKey}`,
+            'Accept': 'application/vnd.heroku+json; version=3'
+        };
+
+        console.log(`🔄 Restarting dynos for ${appName}...`);
+        await axios.delete(`https://api.heroku.com/apps/${appName}/dynos`, { headers });
+        console.log(`✅ Successfully restarted dynos for ${appName}`);
+
+        res.status(200).json({ status: 'success', message: `Dynos successfully restarted for ${appName}. Bots are reconnecting.` });
+    } catch (err) {
+        console.error(`Failed to restart dynos for ${appName}:`, err.message);
+        res.status(500).json({ status: 'error', message: err.response?.data?.message || err.message });
+    }
+});
+
+// POST restart all Heroku apps dynos with safe spacing
+app.post('/api/apps/restart-all', verifyPassword, async (req, res) => {
+    try {
+        const config = await getHerokuConfig();
+        if (!config.herokuApiKey) {
+            throw new Error("Heroku API Key is not configured in Settings!");
+        }
+
+        const appPrefix = config.appPrefix || "asitha-bot-app";
+        const headers = {
+            'Authorization': `Bearer ${config.herokuApiKey}`,
+            'Accept': 'application/vnd.heroku+json; version=3'
+        };
+
+        const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
+        const filteredApps = herokuApps
+            .filter(app => app.name.startsWith(`${appPrefix}-`))
+            .sort((a, b) => {
+                const numA = parseInt(a.name.replace(`${appPrefix}-`, ''), 10) || 0;
+                const numB = parseInt(b.name.replace(`${appPrefix}-`, ''), 10) || 0;
+                return numA - numB;
+            });
+
+        if (filteredApps.length === 0) {
+            return res.status(200).json({ status: 'success', message: 'No active Heroku apps found to restart.', appsCount: 0, apps: [] });
+        }
+
+        console.log(`🔄 Triggering bulk dyno restart for ${filteredApps.length} apps with 500ms spacing...`);
+
+        // Run sequential restart in background with safe 500ms delay to prevent Heroku rate-limits
+        (async () => {
+            for (let i = 0; i < filteredApps.length; i++) {
+                const app = filteredApps[i];
+                try {
+                    console.log(`[${i + 1}/${filteredApps.length}] Restarting dynos for ${app.name}...`);
+                    await axios.delete(`https://api.heroku.com/apps/${app.name}/dynos`, { headers });
+                } catch (e) {
+                    console.error(`Failed to restart ${app.name}:`, e.message);
+                }
+                await new Promise(r => setTimeout(r, 500));
+            }
+            console.log(`✅ Bulk restart completed for all ${filteredApps.length} apps.`);
+        })();
+
+        res.status(200).json({
+            status: 'success',
+            message: `Restart initiated for ${filteredApps.length} applications with staggered timeouts.`,
+            appsCount: filteredApps.length,
+            apps: filteredApps.map(a => a.name)
+        });
+    } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
     }
 });
@@ -416,7 +504,7 @@ app.post('/api/apps/redeploy-all', verifyPassword, async (req, res) => {
     try {
         const config = await getHerokuConfig();
         if (!config.herokuApiKey) {
-            throw new Error("Heroku API Key is not configured!");
+            throw new Error("Heroku API Key is not configured in Settings!");
         }
 
         const appPrefix = config.appPrefix || "asitha-bot-app";
@@ -426,28 +514,57 @@ app.post('/api/apps/redeploy-all', verifyPassword, async (req, res) => {
         };
 
         const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
-        const filteredApps = herokuApps.filter(app => app.name.startsWith(`${appPrefix}-`));
+        const filteredApps = herokuApps
+            .filter(app => app.name.startsWith(`${appPrefix}-`))
+            .sort((a, b) => {
+                const numA = parseInt(a.name.replace(`${appPrefix}-`, ''), 10) || 0;
+                const numB = parseInt(b.name.replace(`${appPrefix}-`, ''), 10) || 0;
+                return numA - numB;
+            });
 
         if (filteredApps.length === 0) {
             return res.status(200).json({ status: 'success', message: 'No active Heroku apps found to redeploy.', appsCount: 0, apps: [] });
         }
 
-        console.log(`🔄 Triggering bulk redeployment for ${filteredApps.length} apps...`);
+        console.log(`🔄 Triggering sequential bulk redeployment for ${filteredApps.length} apps with 8s spacing...`);
 
-        const results = [];
-        for (const app of filteredApps) {
-            const appName = app.name;
-            const index = appName.replace(`${appPrefix}-`, '');
-            const collectionName = `sfolder${index}_sessions`;
+        // Start background worker so API response doesn't time out
+        (async () => {
+            let cachedStandardBuffer = null;
+            for (let i = 0; i < filteredApps.length; i++) {
+                const app = filteredApps[i];
+                const appName = app.name;
+                const index = appName.replace(`${appPrefix}-`, '');
+                const collectionName = `sfolder${index}_sessions`;
+                const isDevApp = (index === '7');
 
-            console.log(`🏗️ Bulk Redeploying ${appName}...`);
-            deployHerokuApp(appName, collectionName).catch(err => {
-                console.error(`Failed to redeploy ${appName} in bulk:`, err.message);
-            });
-            results.push(appName);
-        }
+                console.log(`🏗️ [${i + 1}/${filteredApps.length}] Bulk Redeploying ${appName}...`);
+                try {
+                    const bufToUse = isDevApp ? null : cachedStandardBuffer;
+                    const buildData = await deployHerokuApp(appName, collectionName, bufToUse);
+                    if (!isDevApp && !cachedStandardBuffer && buildData?._sourceBuffer) {
+                        cachedStandardBuffer = buildData._sourceBuffer;
+                    }
+                    console.log(`✅ [${i + 1}/${filteredApps.length}] Build triggered successfully for ${appName}`);
+                } catch (err) {
+                    console.error(`❌ [${i + 1}/${filteredApps.length}] Failed to redeploy ${appName} in bulk:`, err.message);
+                }
 
-        res.status(200).json({ status: 'success', appsCount: results.length, apps: results });
+                // 8-second delay between app builds to prevent Heroku concurrency conflicts
+                if (i < filteredApps.length - 1) {
+                    console.log(`⏳ Waiting 8 seconds before triggering next app build...`);
+                    await new Promise(r => setTimeout(r, 8000));
+                }
+            }
+            console.log(`🏁 Bulk redeployment queue finished for all ${filteredApps.length} apps.`);
+        })();
+
+        res.status(200).json({
+            status: 'success',
+            message: `Initiated bulk updates for ${filteredApps.length} Heroku applications in sequence (8s timeout between apps).`,
+            appsCount: filteredApps.length,
+            apps: filteredApps.map(a => a.name)
+        });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });
     }
