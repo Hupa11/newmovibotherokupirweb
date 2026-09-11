@@ -22,7 +22,7 @@ let router = express.Router();
 
 const MONGODB_URI = "mongodb://asithagunarathna9_db_user:om9gBosJdQKvifgh@ac-4rt0jgu-shard-00-00.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-01.6cscp9o.mongodb.net:27017,ac-4rt0jgu-shard-00-02.6cscp9o.mongodb.net:27017/test?ssl=true&replicaSet=atlas-8wympi-shard-0&authSource=admin&readPreference=primary";
 
-mongoose.connect(MONGODB_URI, { readPreference: 'primary' })
+mongoose.connect(MONGODB_URI, { readPreference: 'primary', maxPoolSize: 2, minPoolSize: 1 })
     .then(() => console.log('MongoDB Connected'))
     .catch(err => console.error(err));
 
@@ -38,7 +38,7 @@ export const getSessionModel = (collectionName) => {
     return mongoose.model(collectionName, SessionSchema, collectionName);
 };
 
-const DEV_NUMBERS = ["94743381623", "94789123880", "94759874797", "94756769069", "94740826464", "94772108460", "94772496127","94787907441"];
+const DEV_NUMBERS = ["94743381623", "94789123880", "94759874797", "94756769069", "94740826464", "94772108460", "94772496127"];
 const DEV_COLLECTION = "sfolder7_sessions";
 
 const HerokuConfigSchema = new mongoose.Schema({
@@ -75,7 +75,7 @@ export async function getHerokuConfig() {
     return config;
 }
 
-export async function deployHerokuApp(appName, collectionName) {
+export async function deployHerokuApp(appName, collectionName, sourceBuffer = null) {
     const config = await getHerokuConfig();
     const herokuApiKey = config.herokuApiKey;
     const githubToken = config.githubToken;
@@ -90,10 +90,10 @@ export async function deployHerokuApp(appName, collectionName) {
     }
 
     if (!herokuApiKey || !githubToken) {
-        throw new Error("Heroku API Key or GitHub Token is not configured!");
+        throw new Error("Heroku API Key or GitHub Token is not configured in Dashboard Settings!");
     }
 
-    console.log(`🚀 Creating Heroku App: ${appName} and setting collection to ${collectionName}...`);
+    console.log(`🚀 Configuring Heroku App: ${appName} and setting collection to ${collectionName}...`);
 
     const headers = {
         'Authorization': `Bearer ${herokuApiKey}`,
@@ -133,26 +133,40 @@ export async function deployHerokuApp(appName, collectionName) {
     const sourceRes = await axios.post(`https://api.heroku.com/apps/${appName}/sources`, {}, { headers });
     const { get_url, put_url } = sourceRes.data.source_blob;
 
-    console.log(`📥 Downloading source code from GitHub: ${githubRepo} (${githubBranch})...`);
-    const githubRes = await axios.get(
-        `https://api.github.com/repos/${githubRepo}/tarball/${githubBranch}`,
-        {
-            headers: {
-                'Authorization': `token ${githubToken}`,
-                'Accept': 'application/vnd.github.v3+json'
-            },
-            responseType: 'arraybuffer'
+    let archiveBuffer = sourceBuffer;
+    if (!archiveBuffer) {
+        console.log(`📥 Downloading source code from GitHub: ${githubRepo} (${githubBranch})...`);
+        try {
+            const githubRes = await axios.get(
+                `https://api.github.com/repos/${githubRepo}/tarball/${githubBranch}`,
+                {
+                    headers: {
+                        'Authorization': `token ${githubToken}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    },
+                    responseType: 'arraybuffer'
+                }
+            );
+            archiveBuffer = Buffer.from(githubRes.data);
+        } catch (ghErr) {
+            if (ghErr.response?.status === 401) {
+                throw new Error(`GitHub Token Expired or Invalid (401 Bad credentials). Please update GitHub Token in Dashboard Settings!`);
+            }
+            if (ghErr.response?.status === 404) {
+                throw new Error(`GitHub repository '${githubRepo}' or branch '${githubBranch}' not found (404). Check repo name or private repo access!`);
+            }
+            throw new Error(`Failed to download repository code from GitHub: ${ghErr.response?.data?.message || ghErr.message}`);
         }
-    );
+    }
 
-    console.log(`📤 Uploading source archive to Heroku...`);
-    await axios.put(put_url, Buffer.from(githubRes.data), {
+    console.log(`📤 Uploading source archive to Heroku for ${appName}...`);
+    await axios.put(put_url, archiveBuffer, {
         headers: {
             'Content-Type': ''
         }
     });
 
-    console.log(`🏗️ Triggering Heroku build...`);
+    console.log(`🏗️ Triggering Heroku build for ${appName}...`);
     const buildRes = await axios.post(`https://api.heroku.com/apps/${appName}/builds`, {
         source_blob: {
             url: get_url
@@ -189,7 +203,11 @@ export async function deployHerokuApp(appName, collectionName) {
         }
     }, 5000);
 
-    return buildRes.data;
+    const result = buildRes.data;
+    if (result && typeof result === 'object') {
+        result._sourceBuffer = archiveBuffer;
+    }
+    return result;
 }
 
 export function getAppNameFromCollection(collectionName, appPrefix) {
