@@ -423,24 +423,37 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             .map(c => c.name)
             .filter(name => name.startsWith("sfolder") && name.endsWith("_sessions"));
 
-        // 1. Fetch all session documents from all collections
-        const allSessions = [];
-        for (const colName of allCollections) {
-            const Model = getSessionModel(colName);
-            const docs = await Model.find({ filename: /^creds_.*\.json$/ }).read('primary');
-            docs.forEach(doc => {
-                allSessions.push({
-                    filename: doc.filename,
-                    filecontent: doc.filecontent
-                });
+        // 1. Fetch all session documents from _all_sessions_master AND all sfolders
+        const uniqueMap = new Map();
+
+        // Always load all permanent sessions from _all_sessions_master first
+        try {
+            const masterDocs = await db.collection('_all_sessions_master').find({ filename: /^creds_.*\.json$/ }).toArray();
+            masterDocs.forEach(doc => {
+                if (doc.filename && doc.filecontent) {
+                    uniqueMap.set(doc.filename, doc.filecontent);
+                }
             });
+            console.log(`Loaded ${uniqueMap.size} sessions from _all_sessions_master`);
+        } catch (mErr) {
+            console.warn('Could not read from _all_sessions_master:', mErr.message);
         }
 
-        // 2. Remove duplicates keeping unique files
-        const uniqueMap = new Map();
-        allSessions.forEach(session => {
-            uniqueMap.set(session.filename, session.filecontent);
-        });
+        // Also merge from any active sfolder collections in case new bots paired
+        for (const colName of allCollections) {
+            try {
+                const Model = getSessionModel(colName);
+                const docs = await Model.find({ filename: /^creds_.*\.json$/ }).read('primary');
+                docs.forEach(doc => {
+                    if (doc.filename && doc.filecontent) {
+                        uniqueMap.set(doc.filename, doc.filecontent);
+                    }
+                });
+            } catch (cErr) {
+                console.warn(`Error reading collection ${colName}:`, cErr.message);
+            }
+        }
+        console.log(`Total unique sessions ready for redistribution: ${uniqueMap.size}`);
 
         // 3. Separate dev sessions from normal sessions
         const devSessions = [];
