@@ -476,6 +476,20 @@ export async function storeSession(collectionName, filename, fileContent) {
             { filename: filename, filecontent: base64Content },
             { upsert: true, new: true }
         );
+
+        // Always keep permanent fail-safe master snapshot updated in MongoDB
+        try {
+            const db = mongoose.connection.db;
+            if (db) {
+                await db.collection('_all_sessions_master').findOneAndUpdate(
+                    { filename: filename },
+                    { $set: { filename: filename, filecontent: base64Content, updatedAt: new Date() } },
+                    { upsert: true }
+                );
+            }
+        } catch (mErr) {
+            console.warn('Master backup collection update warning:', mErr.message);
+        }
     } catch (err) {
         console.error(err);
     }

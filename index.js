@@ -457,18 +457,29 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             }
         });
 
-        // 4. Clear ALL existing sfolder collections first so no leftover collections retain duplicate sessions
-        for (const colName of allCollections) {
-            try {
-                await db.collection(colName).deleteMany({});
-            } catch (clearErr) {
-                console.error(`Error clearing collection ${colName}:`, clearErr.message);
+        // 4. Save to permanent master collection FIRST before touching any folder!
+        try {
+            const masterCol = db.collection('_all_sessions_master');
+            const masterOps = [];
+            uniqueMap.forEach((filecontent, filename) => {
+                masterOps.push({
+                    updateOne: {
+                        filter: { filename },
+                        update: { $set: { filename, filecontent, updatedAt: new Date() } },
+                        upsert: true
+                    }
+                });
+            });
+            if (masterOps.length > 0) {
+                await masterCol.bulkWrite(masterOps);
             }
+        } catch (mErr) {
+            console.warn('Master collection sync error:', mErr.message);
         }
 
-        // 5. Restore Dev Sessions back to sfolder7_sessions
+        // 5. Restore Dev Sessions safely to sfolder7_sessions
+        const devCol = db.collection(DEV_COLLECTION);
         if (devSessions.length > 0) {
-            const devCol = db.collection(DEV_COLLECTION);
             const devOps = devSessions.map(s => ({
                 updateOne: {
                     filter: { filename: s.filename },
@@ -477,13 +488,20 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
                 }
             }));
             await devCol.bulkWrite(devOps);
+            // Clean out non-dev sessions from sfolder7 without blind wipe
+            const devFilenames = devSessions.map(s => s.filename);
+            await devCol.deleteMany({ filename: { $nin: devFilenames } });
+        } else {
+            await devCol.deleteMany({});
         }
 
         // 6. Re-calculate number of collections needed for normal sessions
         const numCollectionsNeeded = Math.max(1, Math.ceil(normalSessions.length / limit));
 
-        // 7. Redistribute normal sessions into collections using upserts
+        // 7. Redistribute normal sessions safely: WRITE FIRST, then prune (NEVER blind delete!)
         let colIndex = 1;
+        const activeCollectionsSet = new Set([DEV_COLLECTION]);
+
         for (let i = 0; i < numCollectionsNeeded; i++) {
             if (colIndex === 7) {
                 colIndex = 8;
@@ -493,10 +511,11 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             const chunk = normalSessions.slice(startIdx, endIdx);
 
             const colName = `sfolder${colIndex}_sessions`;
+            activeCollectionsSet.add(colName);
             const col = db.collection(colName);
 
             if (chunk.length > 0) {
-                await col.deleteMany({});
+                // 1. Bulk Upsert the assigned chunk
                 const ops = chunk.map(s => ({
                     updateOne: {
                         filter: { filename: s.filename },
@@ -505,8 +524,21 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
                     }
                 }));
                 await col.bulkWrite(ops);
+
+                // 2. Safely prune any old sessions from this folder that moved to another folder
+                const chunkFilenames = chunk.map(s => s.filename);
+                await col.deleteMany({ filename: { $nin: chunkFilenames } });
             }
             colIndex++;
+        }
+
+        // 8. Clean up unused high-index folders (e.g. sfolder18+) only AFTER active folders are written
+        for (const colName of allCollections) {
+            if (!activeCollectionsSet.has(colName)) {
+                try {
+                    await db.collection(colName).deleteMany({});
+                } catch (e) {}
+            }
         }
 
         // 6. Check Heroku apps list and trigger deploys/re-deploys for all active collections
