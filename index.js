@@ -152,9 +152,13 @@ app.get('/api/apps', verifyPassword, async (req, res) => {
                 }
             }
 
+            let cleanUrl = app.web_url || `https://${app.name}.herokuapp.com`;
+            if (cleanUrl.endsWith('/')) cleanUrl = cleanUrl.slice(0, -1);
+
             return {
                 id: app.id,
                 name: app.name,
+                webUrl: cleanUrl,
                 status: app.maintenance ? 'maintenance' : 'active',
                 collectionName,
                 botsCount
@@ -302,6 +306,64 @@ app.post('/api/apps/delete', verifyPassword, async (req, res) => {
         res.status(200).json({ status: 'success', message: `App ${appName} deleted successfully (MongoDB collection preserved).` });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.response?.data?.message || err.message });
+    }
+});
+
+// POST delete all Heroku apps matching prefix (sessions preserved)
+app.post('/api/apps/delete-all', verifyPassword, async (req, res) => {
+    try {
+        const config = await getHerokuConfig();
+        if (!config.herokuApiKey) {
+            throw new Error("Heroku API Key is not configured in Settings!");
+        }
+
+        const appPrefix = config.appPrefix || "asitha-bot-app";
+        const headers = {
+            'Authorization': `Bearer ${config.herokuApiKey}`,
+            'Accept': 'application/vnd.heroku+json; version=3'
+        };
+
+        const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
+        const filteredApps = herokuApps
+            .filter(app => app.name.startsWith(`${appPrefix}-`))
+            .sort((a, b) => {
+                const numA = parseInt(a.name.replace(`${appPrefix}-`, ''), 10) || 0;
+                const numB = parseInt(b.name.replace(`${appPrefix}-`, ''), 10) || 0;
+                return numA - numB;
+            });
+
+        if (filteredApps.length === 0) {
+            return res.status(200).json({ status: 'success', message: 'No managed Heroku apps found to delete.', deletedCount: 0, deletedApps: [] });
+        }
+
+        console.log(`🚨 Triggering bulk deletion for ${filteredApps.length} apps with 400ms spacing...`);
+
+        const deletedApps = [];
+        const failedApps = [];
+        for (let i = 0; i < filteredApps.length; i++) {
+            const app = filteredApps[i];
+            try {
+                console.log(`[${i + 1}/${filteredApps.length}] Deleting app ${app.name}...`);
+                await axios.delete(`https://api.heroku.com/apps/${app.name}`, { headers });
+                deletedApps.push(app.name);
+            } catch (e) {
+                console.error(`Failed to delete ${app.name}:`, e.message);
+                failedApps.push({ app: app.name, error: e.message });
+            }
+            await new Promise(r => setTimeout(r, 400));
+        }
+
+        console.log(`✅ Bulk delete completed: ${deletedApps.length} deleted, ${failedApps.length} failed.`);
+
+        res.status(200).json({
+            status: 'success',
+            message: `Successfully deleted ${deletedApps.length} applications (MongoDB sessions preserved).`,
+            deletedCount: deletedApps.length,
+            deletedApps,
+            failedApps
+        });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
     }
 });
 
@@ -459,32 +521,65 @@ app.post('/api/apps/redistribute', verifyPassword, async (req, res) => {
             const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
             const activeAppNames = herokuApps.map(app => app.name);
 
+            const appsToDeploy = [];
             let appIndex = 1;
             for (let i = 0; i < numCollectionsNeeded; i++) {
                 if (appIndex === 7) {
                     appIndex = 8;
                 }
-                const appName = `${appPrefix}-${appIndex}`;
-                const colName = `sfolder${appIndex}_sessions`;
-
-                console.log(`🤖 Redistributor: Deploying/Redeploying app ${appName} for ${colName}...`);
-                deployHerokuApp(appName, colName).catch(err => {
-                    console.error(`Failed to deploy/redeploy app ${appName} during redistribution:`, err.message);
+                appsToDeploy.push({
+                    appName: `${appPrefix}-${appIndex}`,
+                    colName: `sfolder${appIndex}_sessions`,
+                    isDev: false
                 });
-                deployedAppsCount++;
                 appIndex++;
             }
 
-            // Developer App Check (sfolder7_sessions) only if dev sessions exist
             if (devSessions.length > 0) {
-                const devAppName = `${appPrefix}-7`;
-                const devColName = "sfolder7_sessions";
-                console.log(`🤖 Redistributor: Deploying developer app ${devAppName}...`);
-                deployHerokuApp(devAppName, devColName).catch(err => {
-                    console.error(`Failed to deploy developer app ${devAppName} during redistribution:`, err.message);
+                appsToDeploy.push({
+                    appName: `${appPrefix}-7`,
+                    colName: "sfolder7_sessions",
+                    isDev: true
                 });
-                deployedAppsCount++;
             }
+
+            deployedAppsCount = appsToDeploy.length;
+
+            console.log(`🚀 Redistributor: Starting sequential background deployment for ${appsToDeploy.length} apps with cached source buffer and 8s spacing...`);
+
+            // Sequential background deployment worker with cached tarball & retries
+            (async () => {
+                let cachedStandardBuffer = null;
+                for (let i = 0; i < appsToDeploy.length; i++) {
+                    const item = appsToDeploy[i];
+                    console.log(`🏗️ [${i + 1}/${appsToDeploy.length}] Redistributor deploying ${item.appName} (${item.colName})...`);
+
+                    let success = false;
+                    for (let attempt = 1; attempt <= 2; attempt++) {
+                        try {
+                            const bufToUse = item.isDev ? null : cachedStandardBuffer;
+                            const buildData = await deployHerokuApp(item.appName, item.colName, bufToUse);
+                            if (!item.isDev && !cachedStandardBuffer && buildData?._sourceBuffer) {
+                                cachedStandardBuffer = buildData._sourceBuffer;
+                            }
+                            console.log(`✅ [${i + 1}/${appsToDeploy.length}] Build triggered successfully for ${item.appName}`);
+                            success = true;
+                            break;
+                        } catch (err) {
+                            console.error(`⚠️ [${i + 1}/${appsToDeploy.length}] Attempt ${attempt} failed for ${item.appName}:`, err.message);
+                            if (attempt < 2) {
+                                await new Promise(r => setTimeout(r, 4000));
+                            }
+                        }
+                    }
+
+                    if (i < appsToDeploy.length - 1) {
+                        console.log(`⏳ Waiting 8s before deploying next app...`);
+                        await new Promise(r => setTimeout(r, 8000));
+                    }
+                }
+                console.log(`🏁 Redistributor finished all ${appsToDeploy.length} deployments.`);
+            })();
         }
 
         res.status(200).json({
@@ -564,6 +659,97 @@ app.post('/api/apps/redeploy-all', verifyPassword, async (req, res) => {
             message: `Initiated bulk updates for ${filteredApps.length} Heroku applications in sequence (8s timeout between apps).`,
             appsCount: filteredApps.length,
             apps: filteredApps.map(a => a.name)
+        });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+});
+
+// POST fix unbuilt apps (detects apps with 0 builds or failed builds and deploys them)
+app.post('/api/apps/fix-unbuilt', verifyPassword, async (req, res) => {
+    try {
+        const config = await getHerokuConfig();
+        if (!config.herokuApiKey) {
+            throw new Error("Heroku API Key is not configured in Settings!");
+        }
+
+        const appPrefix = config.appPrefix || "asitha-bot-app";
+        const headers = {
+            'Authorization': `Bearer ${config.herokuApiKey}`,
+            'Accept': 'application/vnd.heroku+json; version=3'
+        };
+
+        const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
+        const filteredApps = herokuApps
+            .filter(app => app.name.startsWith(`${appPrefix}-`))
+            .sort((a, b) => {
+                const numA = parseInt(a.name.replace(`${appPrefix}-`, ''), 10) || 0;
+                const numB = parseInt(b.name.replace(`${appPrefix}-`, ''), 10) || 0;
+                return numA - numB;
+            });
+
+        if (filteredApps.length === 0) {
+            return res.status(200).json({ status: 'success', message: 'No managed Heroku apps found.', count: 0, apps: [] });
+        }
+
+        console.log(`🔍 Checking builds status for ${filteredApps.length} apps...`);
+        const unbuiltApps = [];
+
+        for (const app of filteredApps) {
+            try {
+                const builds = await getHerokuBuilds(app.name);
+                if (!builds || builds.length === 0) {
+                    unbuiltApps.push(app.name);
+                } else {
+                    const latestBuild = builds[0];
+                    if (latestBuild.status === 'failed') {
+                        unbuiltApps.push(app.name);
+                    }
+                }
+            } catch (e) {
+                console.warn(`Could not fetch builds for ${app.name}:`, e.message);
+                unbuiltApps.push(app.name);
+            }
+        }
+
+        if (unbuiltApps.length === 0) {
+            return res.status(200).json({ status: 'success', message: 'All apps already have active/successful builds!', count: 0, apps: [] });
+        }
+
+        console.log(`🚨 Found ${unbuiltApps.length} unbuilt/failed apps: ${unbuiltApps.join(', ')}. Triggering sequential builds...`);
+
+        (async () => {
+            let cachedStandardBuffer = null;
+            for (let i = 0; i < unbuiltApps.length; i++) {
+                const appName = unbuiltApps[i];
+                const index = appName.replace(`${appPrefix}-`, '');
+                const collectionName = `sfolder${index}_sessions`;
+                const isDev = (index === '7');
+
+                console.log(`🏗️ [${i + 1}/${unbuiltApps.length}] Building missing app ${appName}...`);
+                try {
+                    const bufToUse = isDev ? null : cachedStandardBuffer;
+                    const buildData = await deployHerokuApp(appName, collectionName, bufToUse);
+                    if (!isDev && !cachedStandardBuffer && buildData?._sourceBuffer) {
+                        cachedStandardBuffer = buildData._sourceBuffer;
+                    }
+                    console.log(`✅ [${i + 1}/${unbuiltApps.length}] Build triggered for ${appName}`);
+                } catch (err) {
+                    console.error(`❌ Failed to build missing app ${appName}:`, err.message);
+                }
+
+                if (i < unbuiltApps.length - 1) {
+                    await new Promise(r => setTimeout(r, 8000));
+                }
+            }
+            console.log(`🏁 Finished building all ${unbuiltApps.length} previously unbuilt apps.`);
+        })();
+
+        res.status(200).json({
+            status: 'success',
+            message: `Identified and queued builds for ${unbuiltApps.length} unbuilt/failed apps.`,
+            count: unbuiltApps.length,
+            apps: unbuiltApps
         });
     } catch (err) {
         res.status(500).json({ status: 'error', message: err.message });

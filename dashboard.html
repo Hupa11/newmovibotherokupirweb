@@ -666,18 +666,27 @@
             <div>
                 <div class="apps-title-section">
                     <h2><i class="fa-solid fa-server" style="color: var(--primary);"></i> Managed Heroku Applications</h2>
-                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                        <button class="btn btn-warning" style="width: auto; padding: 0.5rem 1.25rem;" onclick="redistributeSessions()">
+                    <div style="display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center;">
+                        <button class="btn btn-warning" style="width: auto; padding: 0.5rem 1.1rem;" onclick="redistributeSessions()" title="Balance bot sessions & auto-deploy">
                             <i class="fa-solid fa-shuffle"></i> Redistribute & Balance
                         </button>
-                        <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.25rem; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34d399;" onclick="restartAllDynos()">
-                            <i class="fa-solid fa-arrows-rotate"></i> Restart All Dynos
+                        <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.1rem; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" onclick="openUrlsModal()" title="View and copy all application host URLs">
+                            <i class="fa-solid fa-link"></i> Host URLs (<span id="btnUrlCount">0</span>)
                         </button>
-                        <button class="btn btn-primary" style="width: auto; padding: 0.5rem 1.25rem; background: #3b82f6; border-color: #2563eb;" onclick="redeployAllApps()">
-                            <i class="fa-solid fa-cloud-arrow-up"></i> Update All Bots
+                        <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.1rem; background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.4); color: #facc15;" onclick="fixUnbuiltApps()" title="Detect and build any apps missing builds">
+                            <i class="fa-solid fa-screwdriver-wrench"></i> Fix Unbuilt Apps
                         </button>
-                        <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.25rem;" onclick="createNewApp()">
-                            <i class="fa-solid fa-plus-circle"></i> Deploy New App
+                        <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.1rem; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34d399;" onclick="restartAllDynos()" title="Restart dynos for all apps">
+                            <i class="fa-solid fa-arrows-rotate"></i> Restart All
+                        </button>
+                        <button class="btn btn-primary" style="width: auto; padding: 0.5rem 1.1rem; background: #3b82f6; border-color: #2563eb;" onclick="redeployAllApps()" title="Redeploy all apps from latest code">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Update All
+                        </button>
+                        <button class="btn btn-secondary" style="width: auto; padding: 0.5rem 1.1rem;" onclick="createNewApp()" title="Spawn single new dyno">
+                            <i class="fa-solid fa-plus-circle"></i> Deploy New
+                        </button>
+                        <button class="btn btn-danger" style="width: auto; padding: 0.5rem 1.1rem;" onclick="deleteAllApps()" title="Delete all managed Heroku dynos">
+                            <i class="fa-solid fa-trash-can"></i> Delete All Apps
                         </button>
                     </div>
                 </div>
@@ -760,6 +769,37 @@
                     </button>
                 </div>
                 <pre id="buildLogsConsole" style="background: #090d16; border: 1px solid var(--glass-border); border-radius: 12px; padding: 1rem; font-family: var(--font-mono); font-size: 0.8rem; color: #fcd34d; overflow: auto; flex-grow: 1; white-space: pre-wrap; line-height: 1.5; height: 350px;">Select a build to view logs...</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Host URLs Modal -->
+    <div id="urlsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); z-index: 1000; align-items: center; justify-content: center; padding: 2rem;">
+        <div class="glass-panel" style="width: 100%; max-width: 750px; max-height: 85vh; display: flex; flex-direction: column; margin-bottom: 0; border: 1px solid rgba(255, 255, 255, 0.1); padding: 1.5rem; box-shadow: 0 20px 50px rgba(0,0,0,0.6); overflow: hidden;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                <h3 style="font-family: var(--font-outfit); font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-link" style="color: #38bdf8;"></i> 
+                    <span>Heroku App Host URLs (<span id="modalUrlCount">0</span> Apps)</span>
+                </h3>
+                <button onclick="closeUrlsModal()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; transition: color 0.2s;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                Live public host URLs for your managed Heroku bot applications:
+            </p>
+
+            <textarea id="urlsTextarea" readonly style="background: #090d16; border: 1px solid var(--glass-border); border-radius: 12px; padding: 1rem; font-family: var(--font-mono); font-size: 0.85rem; color: #38bdf8; overflow: auto; flex-grow: 1; height: 260px; line-height: 1.6; resize: none;"></textarea>
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 1rem; justify-content: flex-end; flex-wrap: wrap;">
+                <button class="btn btn-secondary" onclick="copyPlainUrls()" style="width: auto; padding: 0.5rem 1.25rem; font-size: 0.85rem;">
+                    <i class="fa-solid fa-copy"></i> Copy Plain URLs
+                </button>
+                <button class="btn btn-secondary" onclick="copyWithNames()" style="width: auto; padding: 0.5rem 1.25rem; font-size: 0.85rem;">
+                    <i class="fa-solid fa-list-check"></i> Copy With App Names
+                </button>
+                <button class="btn btn-primary" onclick="downloadUrlsTxt()" style="width: auto; padding: 0.5rem 1.25rem; font-size: 0.85rem;">
+                    <i class="fa-solid fa-download"></i> Download .txt
+                </button>
             </div>
         </div>
     </div>
@@ -900,6 +940,17 @@
                                 </div>
                                 <div class="app-details">
                                     <div class="detail-row">
+                                        <span>Host URL:</span>
+                                        <div style="display: flex; align-items: center; gap: 0.4rem; max-width: 65%;">
+                                            <a href="${app.webUrl}" target="_blank" style="color: #38bdf8; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; font-family: var(--font-mono);" title="${app.webUrl}">
+                                                ${app.webUrl}
+                                            </a>
+                                            <button onclick="copySingleUrl('${app.webUrl}', '${app.name}')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px; font-size: 0.85rem;" title="Copy Host URL">
+                                                <i class="fa-regular fa-copy"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="detail-row">
                                         <span>Collection:</span>
                                         <strong>${app.collectionName}</strong>
                                     </div>
@@ -932,6 +983,9 @@
                         
                         document.getElementById('statAppsCount').innerText = apps.length;
                         document.getElementById('statBotsCount').innerText = totalBots;
+                        const btnUrlCount = document.getElementById('btnUrlCount');
+                        if (btnUrlCount) btnUrlCount.innerText = apps.length;
+                        window.latestAppsList = apps;
                         
                         log(`Successfully loaded and synchronized ${apps.length} Heroku applications.`);
                     }
@@ -1333,6 +1387,136 @@
                 }
             } catch (err) {
                 consoleArea.innerText = `Failed to fetch build logs: ${err.message}`;
+            }
+        }
+
+        // Single URL Copy
+        function copySingleUrl(url, name) {
+            navigator.clipboard.writeText(url).then(() => {
+                log(`Copied URL for ${name}: ${url}`, 'success');
+            }).catch(e => {
+                prompt("Copy URL:", url);
+            });
+        }
+
+        // Open Host URLs Modal
+        function openUrlsModal() {
+            const apps = window.latestAppsList || [];
+            if (apps.length === 0) {
+                alert("No Heroku applications currently loaded. Please wait for sync or deploy an app first.");
+                return;
+            }
+
+            const modal = document.getElementById('urlsModal');
+            const textarea = document.getElementById('urlsTextarea');
+            const countSpan = document.getElementById('modalUrlCount');
+
+            countSpan.innerText = apps.length;
+            const plainUrls = apps.map(a => a.webUrl).join('\n');
+            textarea.value = plainUrls;
+            modal.style.display = 'flex';
+        }
+
+        function closeUrlsModal() {
+            document.getElementById('urlsModal').style.display = 'none';
+        }
+
+        function copyPlainUrls() {
+            const textarea = document.getElementById('urlsTextarea');
+            navigator.clipboard.writeText(textarea.value).then(() => {
+                log(`Copied ${window.latestAppsList?.length || 0} plain URLs to clipboard!`, 'success');
+                alert("✅ Plain URLs copied to clipboard!");
+            }).catch(e => {
+                textarea.select();
+                document.execCommand('copy');
+                alert("✅ Copied to clipboard!");
+            });
+        }
+
+        function copyWithNames() {
+            const apps = window.latestAppsList || [];
+            const text = apps.map(a => `${a.name}: ${a.webUrl}`).join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                log(`Copied ${apps.length} named URLs to clipboard!`, 'success');
+                alert("✅ URLs with App Names copied to clipboard!");
+            }).catch(e => {
+                prompt("Copy named URLs:", text);
+            });
+        }
+
+        function downloadUrlsTxt() {
+            const apps = window.latestAppsList || [];
+            const text = apps.map(a => `${a.name}: ${a.webUrl}`).join('\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `heroku_bot_host_urls_${Date.now()}.txt`;
+            a.click();
+            log(`Downloaded list of ${apps.length} URLs as text file.`, 'success');
+        }
+
+        // Delete ALL Apps
+        async function deleteAllApps() {
+            const apps = window.latestAppsList || [];
+            const count = apps.length;
+            if (count === 0) {
+                alert("No active Heroku apps found to delete.");
+                return;
+            }
+
+            const confirm1 = confirm(`🚨 CRITICAL WARNING: You are about to permanently DELETE ALL ${count} Heroku Dyno applications!\n\n(Note: WhatsApp session keys in MongoDB will be PRESERVED so you can re-deploy anytime).\n\nAre you absolutely sure you want to delete ALL apps?`);
+            if (!confirm1) return;
+
+            const confirm2 = prompt(`To confirm deletion of ALL ${count} applications, please type 'DELETE':`);
+            if (confirm2 !== 'DELETE') {
+                alert("Deletion cancelled. You must type 'DELETE' to confirm.");
+                return;
+            }
+
+            log(`🚨 Initiating bulk deletion of ALL ${count} Heroku applications...`, 'err');
+
+            try {
+                const res = await fetchApi('/api/apps/delete-all', { method: 'POST' });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    log(`✅ Successfully deleted ${data.deletedCount} Heroku apps.`, 'success');
+                    alert(`✅ Successfully deleted ${data.deletedCount} Heroku apps.`);
+                    fetchApps();
+                } else {
+                    log(`❌ Bulk delete failed: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Connection error during bulk delete: ${err.message}`, 'err');
+            }
+        }
+
+        // Fix Unbuilt Apps
+        async function fixUnbuiltApps() {
+            if (!confirm("🔍 Scan all managed Heroku applications and automatically trigger builds for any apps missing builds or with failed builds?\n\nThis will run sequentially in the background with safe spacing.")) return;
+
+            log("Scanning all applications for missing or failed builds...", 'warn');
+
+            try {
+                const res = await fetchApi('/api/apps/fix-unbuilt', { method: 'POST' });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    if (data.count === 0) {
+                        log("✅ All applications already have active/successful builds! Nothing to fix.", 'success');
+                        alert("✅ All applications already have active/successful builds!");
+                    } else {
+                        log(`🏗️ Queued builds for ${data.count} unbuilt/failed apps: ${data.apps.join(', ')}`, 'success');
+                        alert(`🏗️ Found and queued builds for ${data.count} apps: ${data.apps.join(', ')}\n\nBuilds are progressing sequentially in the background.`);
+                    }
+                    fetchApps();
+                } else {
+                    log(`❌ Failed to fix unbuilt apps: ${data.message}`, 'err');
+                    alert(`Failed: ${data.message}`);
+                }
+            } catch (err) {
+                log(`Connection error during fix-unbuilt request: ${err.message}`, 'err');
             }
         }
 
