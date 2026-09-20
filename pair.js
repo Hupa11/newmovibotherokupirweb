@@ -75,7 +75,10 @@ export async function getHerokuConfig() {
     return config;
 }
 
+export const deployingApps = new Set();
+
 export async function deployHerokuApp(appName, collectionName, sourceBuffer = null) {
+    deployingApps.add(appName);
     const config = await getHerokuConfig();
     const herokuApiKey = config.herokuApiKey;
     const githubToken = config.githubToken;
@@ -90,6 +93,7 @@ export async function deployHerokuApp(appName, collectionName, sourceBuffer = nu
     }
 
     if (!herokuApiKey || !githubToken) {
+        deployingApps.delete(appName);
         throw new Error("Heroku API Key or GitHub Token is not configured in Dashboard Settings!");
     }
 
@@ -105,6 +109,7 @@ export async function deployHerokuApp(appName, collectionName, sourceBuffer = nu
         await axios.post('https://api.heroku.com/apps', { name: appName }, { headers });
     } catch (err) {
         if (err.response && err.response.status !== 422) {
+            deployingApps.delete(appName);
             throw new Error(`Failed to create Heroku App: ${err.response.data.message || err.message}`);
         }
     }
@@ -149,6 +154,7 @@ export async function deployHerokuApp(appName, collectionName, sourceBuffer = nu
             );
             archiveBuffer = Buffer.from(githubRes.data);
         } catch (ghErr) {
+            deployingApps.delete(appName);
             if (ghErr.response?.status === 401) {
                 throw new Error(`GitHub Token Expired or Invalid (401 Bad credentials). Please update GitHub Token in Dashboard Settings!`);
             }
@@ -175,26 +181,29 @@ export async function deployHerokuApp(appName, collectionName, sourceBuffer = nu
 
     console.log(`✅ Deployment started for ${appName}. Build ID: ${buildRes.data.id}`);
 
-    // Set dyno size to standard-2x in background
+    // Set dyno size to standard-2x with quantity 1 in background
     setTimeout(async function retryScale() {
         let attempts = 0;
-        const maxAttempts = 12; // 2 minutes (every 10 seconds)
+        const maxAttempts = 30; // 5 minutes (every 10 seconds)
         while (attempts < maxAttempts) {
             try {
                 await axios.patch(`https://api.heroku.com/apps/${appName}/formation`, {
                     updates: [
                         {
                             type: "web",
-                            size: "standard-2x"
+                            size: "standard-2x",
+                            quantity: 1
                         }
                     ]
                 }, { headers });
-                console.log(`✅ Successfully scaled dyno size to standard-2x for ${appName}`);
+                console.log(`✅ Successfully scaled dyno size to standard-2x with quantity 1 for ${appName}`);
+                deployingApps.delete(appName);
                 break;
             } catch (e) {
                 attempts++;
                 if (attempts >= maxAttempts) {
-                    console.error(`❌ Failed to scale dyno size to standard-2x for ${appName} after 2 minutes:`, e.response?.data?.message || e.message);
+                    console.error(`❌ Failed to scale dyno size to standard-2x for ${appName} after 5 minutes:`, e.response?.data?.message || e.message);
+                    deployingApps.delete(appName);
                 } else {
                     console.log(`⏳ Waiting for build to register process types for ${appName}. Retrying scale in 10s (Attempt ${attempts}/${maxAttempts})...`);
                     await new Promise(resolve => setTimeout(resolve, 10000));
@@ -363,22 +372,24 @@ export async function checkAndAutoRestart() {
 export async function getTargetCollection(phoneNumber) {
     const config = await getHerokuConfig();
     const appPrefix = config.appPrefix || "asitha-bot-app";
+    const herokuApiKey = config.herokuApiKey;
+    const limit = config.botsPerAppLimit || 30;
 
     if (DEV_NUMBERS.includes(phoneNumber)) {
         const devIndex = 7;
         const devAppName = `${appPrefix}-${devIndex}`;
 
         try {
-            if (config.herokuApiKey) {
+            if (herokuApiKey) {
                 const headers = {
-                    'Authorization': `Bearer ${config.herokuApiKey}`,
+                    'Authorization': `Bearer ${herokuApiKey}`,
                     'Accept': 'application/vnd.heroku+json; version=3'
                 };
 
                 const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
                 const exists = herokuApps.some(app => app.name === devAppName);
 
-                if (!exists) {
+                if (!exists && !deployingApps.has(devAppName)) {
                     console.log(`🚨 Dev Heroku app ${devAppName} does not exist. Auto-deploying it...`);
                     deployHerokuApp(devAppName, DEV_COLLECTION).catch(err => {
                         console.error(`Failed to auto-deploy dev app ${devAppName}:`, err);
@@ -393,52 +404,88 @@ export async function getTargetCollection(phoneNumber) {
     }
 
     try {
-        const limit = config.botsPerAppLimit || 50;
-
         const db = mongoose.connection.db;
-        const collections = await db.listCollections().toArray();
 
+        if (herokuApiKey) {
+            const headers = {
+                'Authorization': `Bearer ${herokuApiKey}`,
+                'Accept': 'application/vnd.heroku+json; version=3'
+            };
+
+            const { data: herokuApps } = await axios.get('https://api.heroku.com/apps', { headers });
+            const deployedApps = herokuApps
+                .filter(app => app.name.startsWith(`${appPrefix}-`))
+                .map(app => {
+                    const num = parseInt(app.name.replace(`${appPrefix}-`, '')) || 0;
+                    return { name: app.name, num };
+                })
+                .filter(a => a.num > 0 && a.num !== 7)
+                .sort((a, b) => a.num - b.num);
+
+            // 1. Check all currently deployed Heroku apps
+            for (const app of deployedApps) {
+                const colName = `sfolder${app.num}_sessions`;
+                const Model = getSessionModel(colName);
+                const count = await Model.countDocuments();
+                if (count < limit) {
+                    console.log(`🎯 Found available deployed app: ${app.name} (${colName}) with ${count}/${limit} bots.`);
+                    return colName;
+                }
+            }
+
+            // 2. Check if an app is currently being deployed in background
+            for (const appName of deployingApps) {
+                if (appName.startsWith(`${appPrefix}-`)) {
+                    const num = parseInt(appName.replace(`${appPrefix}-`, '')) || 0;
+                    if (num > 0 && num !== 7) {
+                        const colName = `sfolder${num}_sessions`;
+                        const Model = getSessionModel(colName);
+                        const count = await Model.countDocuments();
+                        if (count < limit) {
+                            console.log(`🎯 Found newly deploying app: ${appName} (${colName}) with ${count}/${limit} bots.`);
+                            return colName;
+                        }
+                    }
+                }
+            }
+
+            // 3. All deployed apps are full! Determine next index and deploy a new Heroku app
+            const maxDeployed = deployedApps.length > 0 ? Math.max(...deployedApps.map(a => a.num)) : 0;
+            let nextIndex = maxDeployed + 1;
+            if (nextIndex === 7) nextIndex = 8; // skip dev app 7
+
+            const newCollectionName = `sfolder${nextIndex}_sessions`;
+            const newAppName = `${appPrefix}-${nextIndex}`;
+
+            console.log(`🚨 All ${deployedApps.length} deployed apps are full (limit: ${limit}). Auto-deploying new Heroku App: ${newAppName} using collection: ${newCollectionName}...`);
+
+            deployHerokuApp(newAppName, newCollectionName).catch(err => {
+                console.error(`Failed to auto-deploy new Heroku app ${newAppName}:`, err.message);
+            });
+
+            return newCollectionName;
+        }
+
+        // Fallback if no herokuApiKey
+        const collections = await db.listCollections().toArray();
         const normalCollections = collections
             .map(c => c.name)
-            .filter(name => name.startsWith("sfolder") && name.endsWith("_sessions") && name !== DEV_COLLECTION);
-
-        normalCollections.sort((a, b) => {
-            const numA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
-            const numB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
-            return numA - numB;
-        });
+            .filter(name => name.startsWith("sfolder") && name.endsWith("_sessions") && name !== DEV_COLLECTION)
+            .sort((a, b) => {
+                const numA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
+                const numB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+                return numA - numB;
+            });
 
         for (const collectionName of normalCollections) {
             const Model = getSessionModel(collectionName);
             const count = await Model.countDocuments();
             if (count < limit) {
-                console.log(`🎯 Found available collection: ${collectionName} with ${count} bots.`);
                 return collectionName;
             }
         }
 
-        let nextIndex = 1;
-        if (normalCollections.length > 0) {
-            const lastCol = normalCollections[normalCollections.length - 1];
-            const lastNum = parseInt(lastCol.replace(/[^0-9]/g, '')) || 0;
-            nextIndex = lastNum + 1;
-        }
-
-        const devIndex = parseInt(DEV_COLLECTION.replace(/[^0-9]/g, '')) || 7;
-        if (nextIndex === devIndex) {
-            nextIndex = devIndex + 1;
-        }
-
-        const newCollectionName = `sfolder${nextIndex}_sessions`;
-        const newAppName = `${appPrefix}-${nextIndex}`;
-
-        console.log(`🚨 All apps are full. Creating a new Heroku App: ${newAppName} using collection: ${newCollectionName}`);
-
-        deployHerokuApp(newAppName, newCollectionName).catch(err => {
-            console.error(`Failed to auto-deploy new Heroku app ${newAppName}:`, err);
-        });
-
-        return newCollectionName;
+        return "sfolder1_sessions";
     } catch (err) {
         console.error("Error inside getTargetCollection:", err);
         return "sfolder1_sessions";
